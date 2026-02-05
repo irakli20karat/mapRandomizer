@@ -1,6 +1,6 @@
 """
-SkyRandomizer - FINAL SOLUTION
-Install skybox files directly into res_mods to override base files
+SkyRandomizer - Randomizes skybox for each battle
+Installs skybox files directly into res_mods to override base files
 """
 
 import os
@@ -9,7 +9,7 @@ import zipfile
 import shutil
 import BigWorld
 
-print('[SkyRandomizer] ===== FINAL SOLUTION =====')
+print('[SkyRandomizer] ===== INITIALIZING =====')
 
 try:
     from PlayerEvents import g_playerEvents
@@ -30,6 +30,7 @@ class SkyboxRandomizer:
             self.combined_wotmod_name = 'skyRandomizer_AllPacks.7z'
             self.mods_path = None
             self.res_mods_path = None
+            self.sky_packs_path = './mods/skyPacks/'
             self.available_packs = []
             self.current_pack = None
             self.installed_pack = None
@@ -44,7 +45,7 @@ class SkyboxRandomizer:
             traceback.print_exc()
     
     def _get_game_version(self):
-        """Get game version"""
+        """Get game version from mods directory"""
         try:
             import game
             if hasattr(game, 'GameParams') and hasattr(game.GameParams, 'version'):
@@ -72,6 +73,52 @@ class SkyboxRandomizer:
         
         return None
     
+    def _generate_combined_archive(self):
+        """Generate combined archive from individual .wotmod files"""
+        try:
+            if not os.path.exists(self.sky_packs_path):
+                print('[SkyRandomizer] skyPacks folder not found at: {}'.format(self.sky_packs_path))
+                return False
+            
+            combined_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
+            
+            wotmod_files = []
+            for item in os.listdir(self.sky_packs_path):
+                if item.endswith('.wotmod') and item != self.combined_wotmod_name:
+                    wotmod_files.append(item)
+            
+            if not wotmod_files:
+                print('[SkyRandomizer] No .wotmod files found in skyPacks')
+                return False
+            
+            print('[SkyRandomizer] Generating combined archive from {} .wotmod files...'.format(len(wotmod_files)))
+            
+            with zipfile.ZipFile(combined_path, 'w', zipfile.ZIP_DEFLATED) as out_zip:
+                for wotmod_file in wotmod_files:
+                    wotmod_path = os.path.join(self.sky_packs_path, wotmod_file)
+                    pack_name = os.path.splitext(wotmod_file)[0]
+                    
+                    print('[SkyRandomizer] Processing: {}'.format(wotmod_file))
+                    
+                    with zipfile.ZipFile(wotmod_path, 'r') as in_zip:
+                        for file_info in in_zip.filelist:
+                            if file_info.filename.endswith('/'):
+                                continue
+                            
+                            new_path = os.path.join('spaces', pack_name, file_info.filename)
+                            
+                            file_data = in_zip.read(file_info.filename)
+                            out_zip.writestr(new_path, file_data)
+            
+            print('[SkyRandomizer] Combined archive created: {}'.format(combined_path))
+            return True
+            
+        except Exception as e:
+            print('[SkyRandomizer] ERROR generating combined archive: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+            return False
+    
     def _complete_initialization(self):
         """Complete initialization once game is ready"""
         if self.initialized:
@@ -86,12 +133,17 @@ class SkyboxRandomizer:
             self.mods_path = './mods/{}/'.format(version)
             self.res_mods_path = './res_mods/{}/'.format(version)
             
-            # Ensure res_mods directory exists
             if not os.path.exists(self.res_mods_path):
                 os.makedirs(self.res_mods_path)
             
-            # Check combined wotmod
-            combined_wotmod_path = os.path.join(self.mods_path, self.combined_wotmod_name)
+            combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
+            
+            if not os.path.exists(combined_wotmod_path):
+                print('[SkyRandomizer] Combined archive not found, generating...')
+                if not self._generate_combined_archive():
+                    print('[SkyRandomizer] Failed to generate combined archive')
+                    return
+            
             if os.path.exists(combined_wotmod_path):
                 self._scan_available_packs_in_wotmod(combined_wotmod_path)
                 
@@ -100,7 +152,6 @@ class SkyboxRandomizer:
                     print('[SkyRandomizer] Initial pack: {}'.format(self.current_pack))
                     print('[SkyRandomizer] Available packs: {}'.format(', '.join(self.available_packs)))
                     
-                    # Install initial pack
                     self._install_pack(self.current_pack, combined_wotmod_path)
             else:
                 print('[SkyRandomizer] WARNING: Combined wotmod not found at: {}'.format(combined_wotmod_path))
@@ -134,32 +185,26 @@ class SkyboxRandomizer:
         try:
             print('[SkyRandomizer] Installing pack: {}'.format(pack_name))
             
-            # Remove old installation if exists
             if self.installed_pack:
                 self._uninstall_pack()
             
-            # Extract files from wotmod
             with zipfile.ZipFile(wotmod_path, 'r') as z:
                 pack_prefix = 'spaces/{}/res/'.format(pack_name)
                 files_installed = 0
                 
                 for zip_path in z.namelist():
                     if zip_path.startswith(pack_prefix):
-                        # Get the path after the pack prefix
                         rel_path = zip_path[len(pack_prefix):]
                         
                         if not rel_path or rel_path.endswith('/'):
                             continue
                         
-                        # Destination in res_mods
                         dest_path = os.path.join(self.res_mods_path, rel_path)
-                        
-                        # Create directories
                         dest_dir = os.path.dirname(dest_path)
+                        
                         if not os.path.exists(dest_dir):
                             os.makedirs(dest_dir)
                         
-                        # Extract file
                         with z.open(zip_path) as src, open(dest_path, 'wb') as dst:
                             shutil.copyfileobj(src, dst)
                         
@@ -181,7 +226,6 @@ class SkyboxRandomizer:
             
             print('[SkyRandomizer] Uninstalling pack: {}'.format(self.installed_pack))
             
-            # Remove all map environment folders from res_mods/spaces
             spaces_path = os.path.join(self.res_mods_path, 'spaces')
             if os.path.exists(spaces_path):
                 for map_folder in os.listdir(spaces_path):
@@ -224,17 +268,10 @@ class SkyboxRandomizer:
             return
         
         try:
-            # Select a different pack for the next battle
-            if len(self.available_packs) > 1:
-                other_packs = [p for p in self.available_packs if p != self.current_pack]
-                self.current_pack = random.choice(other_packs)
-            else:
-                self.current_pack = self.available_packs[0]
-            
+            self.current_pack = random.choice(self.available_packs)
             print('[SkyRandomizer] Next battle will use: {}'.format(self.current_pack))
             
-            # Install the new pack
-            combined_wotmod_path = os.path.join(self.mods_path, self.combined_wotmod_name)
+            combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
             if os.path.exists(combined_wotmod_path):
                 self._install_pack(self.current_pack, combined_wotmod_path)
                 print('[SkyRandomizer] Pack {} installed and ready for next battle'.format(self.current_pack))
