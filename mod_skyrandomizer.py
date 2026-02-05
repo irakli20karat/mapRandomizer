@@ -1,8 +1,35 @@
+"""
+SkyRandomizer - Preload Strategy Skybox Randomizer for World of Tanks
+
+AUTOMATIC COMBINED WOTMOD BUILDING:
+This mod automatically combines all skybox .wotmod files from ./mods/skyPacks/
+into a single skyRandomizer_AllPacks.wotmod file on game startup.
+
+SMART REBUILD LOGIC:
+- First run: Builds combined pack automatically
+- Subsequent runs: Only rebuilds if:
+  * Source packs were added/removed
+  * Source packs are newer than combined pack
+  * Number of packs changed
+- If already up-to-date: Skips rebuild for faster startup
+
+HOW IT WORKS:
+1. Startup: Combines all packs into one .wotmod (each as spaces/sky_pack_XX/)
+2. Runtime: Switches which skybox path is used (no file operations)
+3. Battle-to-battle: Picks random pack after each battle
+
+INSTALLATION:
+1. Place skybox .wotmod files in: ./mods/skyPacks/
+2. Place this file in: ./mods/1.XX.X.X/
+3. Launch game - combined pack builds automatically
+
+CRITICAL: The _hook_space_loading() method needs WoT-specific API implementation
+to redirect skybox paths at runtime. See IMPLEMENTATION_GUIDE.md for details.
+"""
+
 import os
-import shutil
 import random
 import zipfile
-import tempfile
 import BigWorld
 import ResMgr
 
@@ -14,20 +41,26 @@ try:
 except Exception as e:
     print('[SkyRandomizer] ERROR importing PlayerEvents: {}'.format(e))
 
+try:
+    from Avatar import PlayerAvatar
+    print('[SkyRandomizer] Avatar imported successfully')
+except Exception as e:
+    print('[SkyRandomizer] ERROR importing Avatar: {}'.format(e))
+
 class SkyboxRandomizer:
     def __init__(self):
         print('[SkyRandomizer] Initializing SkyboxRandomizer...')
         try:
             self.skybox_packs_path = './mods/skyPacks/'
+            self.combined_wotmod_name = 'skyRandomizer_AllPacks.wotmod'
             self.mods_path = None  # Will be set to ./mods/{version}/
-            self.hotswap_wotmod_name = 'skyrandomizerHotSwap.wotmod'
-            self.hotswap_wotmod_path = None
-            self.available_packs = []
+            self.available_packs = []  # List of pack folder names inside the wotmod
             self.current_pack = None
             self.initialized = False
+            self.space_loading_hooked = False
             
-            print('[SkyRandomizer] Source path: {}'.format(self.skybox_packs_path))
-            print('[SkyRandomizer] Strategy: Create hot-swappable wotmod in mods folder')
+            print('[SkyRandomizer] Source packs path: {}'.format(self.skybox_packs_path))
+            print('[SkyRandomizer] Strategy: Preload all packs, switch paths at runtime')
             
             self._register_events()
             
@@ -96,9 +129,8 @@ class SkyboxRandomizer:
             print('[SkyRandomizer] ========================================')
             print('[SkyRandomizer] Game version: {}'.format(version))
             self.mods_path = './mods/{}/'.format(version)
-            self.hotswap_wotmod_path = os.path.join(self.mods_path, self.hotswap_wotmod_name)
             print('[SkyRandomizer] Mods directory: {}'.format(self.mods_path))
-            print('[SkyRandomizer] HotSwap wotmod: {}'.format(self.hotswap_wotmod_path))
+            print('[SkyRandomizer] Combined wotmod: {}'.format(self.combined_wotmod_name))
             print('[SkyRandomizer] Skybox packs directory: {}'.format(self.skybox_packs_path))
             print('[SkyRandomizer] ========================================')
             
@@ -111,19 +143,50 @@ class SkyboxRandomizer:
                 os.makedirs(self.skybox_packs_path)
                 print('[SkyRandomizer] Created skyPacks directory')
             
-            self._scan_available_packs()
+            # Check if combined wotmod needs to be built/rebuilt
+            combined_wotmod_path = os.path.join(self.mods_path, self.combined_wotmod_name)
+            should_rebuild = False
+            
+            if not os.path.exists(combined_wotmod_path):
+                print('[SkyRandomizer] Combined wotmod not found')
+                should_rebuild = True
+            else:
+                # Check if source packs are newer than combined wotmod
+                if self._source_packs_changed(combined_wotmod_path):
+                    print('[SkyRandomizer] Source packs have changed since last build')
+                    should_rebuild = True
+                else:
+                    print('[SkyRandomizer] Combined wotmod is up to date: {}'.format(self.combined_wotmod_name))
+            
+            if should_rebuild:
+                print('[SkyRandomizer] Building combined wotmod from source packs...')
+                if self._create_combined_wotmod():
+                    print('[SkyRandomizer] ===== COMBINED WOTMOD CREATED =====')
+                    print('[SkyRandomizer] Location: {}'.format(combined_wotmod_path))
+                    print('[SkyRandomizer] ===================================')
+                    # Scan what packs are available inside the combined wotmod
+                    self._scan_available_packs_in_wotmod(combined_wotmod_path)
+                else:
+                    print('[SkyRandomizer] WARNING: Failed to create combined wotmod')
+                    print('[SkyRandomizer] Please add skybox .wotmod files to: {}'.format(self.skybox_packs_path))
+                    # Still try to scan existing wotmod if build failed
+                    if os.path.exists(combined_wotmod_path):
+                        print('[SkyRandomizer] Attempting to use existing combined wotmod...')
+                        self._scan_available_packs_in_wotmod(combined_wotmod_path)
+            else:
+                # Use existing combined wotmod
+                self._scan_available_packs_in_wotmod(combined_wotmod_path)
             
             if self.available_packs:
-                print('[SkyRandomizer] Installing initial skybox pack...')
-                self._swap_skybox()
+                # Pick initial random skybox
+                self.current_pack = random.choice(self.available_packs)
+                print('[SkyRandomizer] Initial skybox pack: {}'.format(self.current_pack))
             else:
                 print('[SkyRandomizer] ============================================')
-                print('[SkyRandomizer] WARNING: No .wotmod files found!')
-                print('[SkyRandomizer] Expected location: {}'.format(self.skybox_packs_path))
-                print('[SkyRandomizer] Please place skybox .wotmod files there')
-                print('[SkyRandomizer] Creating empty hotswap wotmod anyway...')
+                print('[SkyRandomizer] WARNING: No skybox packs found!')
+                print('[SkyRandomizer] Please place skybox .wotmod files in: {}'.format(self.skybox_packs_path))
+                print('[SkyRandomizer] Then restart the game to generate the combined pack')
                 print('[SkyRandomizer] ============================================')
-                self._create_empty_hotswap_wotmod()
             
             self.initialized = True
             print('[SkyRandomizer] Initialization complete!')
@@ -133,31 +196,157 @@ class SkyboxRandomizer:
             import traceback
             traceback.print_exc()
     
-    def _scan_available_packs(self):
-        """Scan for available .wotmod files"""
+    
+    def _source_packs_changed(self, combined_wotmod_path):
+        """Check if source packs have been added/changed since combined wotmod was built"""
         try:
-            print('[SkyRandomizer] Scanning for skybox packs in: {}'.format(self.skybox_packs_path))
-            
             if not os.path.exists(self.skybox_packs_path):
-                print('[SkyRandomizer] Directory does not exist, creating: {}'.format(self.skybox_packs_path))
-                os.makedirs(self.skybox_packs_path)
-                print('[SkyRandomizer] Please place skybox .wotmod files in this directory')
+                return False
+            
+            # Get modification time of combined wotmod
+            combined_mtime = os.path.getmtime(combined_wotmod_path)
+            
+            # Check all source .wotmod files
+            source_wotmods = [f for f in os.listdir(self.skybox_packs_path) if f.endswith('.wotmod')]
+            
+            # If no source files, no need to rebuild
+            if not source_wotmods:
+                return False
+            
+            # Check if any source file is newer than combined wotmod
+            for source_wotmod in source_wotmods:
+                source_path = os.path.join(self.skybox_packs_path, source_wotmod)
+                if os.path.getmtime(source_path) > combined_mtime:
+                    print('[SkyRandomizer] Source pack is newer: {}'.format(source_wotmod))
+                    return True
+            
+            # Check if number of packs changed by comparing with what's inside combined wotmod
+            try:
+                with zipfile.ZipFile(combined_wotmod_path, 'r') as z:
+                    all_paths = z.namelist()
+                    pack_folders = set()
+                    for path in all_paths:
+                        if path.startswith('spaces/'):
+                            parts = path.split('/')
+                            if len(parts) >= 2:
+                                pack_folders.add(parts[1])
+                    
+                    if len(pack_folders) != len(source_wotmods):
+                        print('[SkyRandomizer] Number of packs changed: {} source files, {} packs in combined'.format(
+                            len(source_wotmods), len(pack_folders)
+                        ))
+                        return True
+            except Exception as e:
+                print('[SkyRandomizer] Could not check combined wotmod contents: {}'.format(e))
+                # If we can't read it, safer to rebuild
+                return True
+            
+            return False
+            
+        except Exception as e:
+            print('[SkyRandomizer] Error checking source packs: {}'.format(e))
+            # On error, rebuild to be safe
+            return True
+    
+    def _create_combined_wotmod(self):
+        """Create a single combined wotmod containing all skybox packs"""
+        try:
+            print('[SkyRandomizer] ===== CREATING COMBINED WOTMOD =====')
+            
+            # Scan for source .wotmod files
+            if not os.path.exists(self.skybox_packs_path):
+                print('[SkyRandomizer] No skyPacks directory found')
+                return False
+            
+            source_wotmods = [f for f in os.listdir(self.skybox_packs_path) if f.endswith('.wotmod')]
+            
+            if not source_wotmods:
+                print('[SkyRandomizer] No .wotmod files found in {}'.format(self.skybox_packs_path))
+                return False
+            
+            print('[SkyRandomizer] Found {} source packs:'.format(len(source_wotmods)))
+            for pack in source_wotmods:
+                print('[SkyRandomizer]   - {}'.format(pack))
+            
+            combined_path = os.path.join(self.mods_path, self.combined_wotmod_name)
+            
+            # Delete existing combined wotmod if it exists (rebuild every time)
+            if os.path.exists(combined_path):
+                try:
+                    print('[SkyRandomizer] Removing old combined wotmod...')
+                    os.remove(combined_path)
+                except Exception as e:
+                    print('[SkyRandomizer] WARNING: Could not delete old combined wotmod: {}'.format(e))
+                    print('[SkyRandomizer] This may cause issues if source packs have changed')
+            
+            print('[SkyRandomizer] Building new combined wotmod...')
+            total_files = 0
+            
+            with zipfile.ZipFile(combined_path, 'w', zipfile.ZIP_STORED) as combined_zip:
+                for idx, source_wotmod in enumerate(source_wotmods):
+                    pack_name = 'sky_pack_{:02d}'.format(idx)
+                    source_path = os.path.join(self.skybox_packs_path, source_wotmod)
+                    
+                    print('[SkyRandomizer] Pack {}/{}: {} -> {}'.format(
+                        idx + 1, len(source_wotmods), source_wotmod, pack_name
+                    ))
+                    
+                    pack_files = 0
+                    with zipfile.ZipFile(source_path, 'r') as source_zip:
+                        for item in source_zip.namelist():
+                            # Rewrite path to be under spaces/{pack_name}/
+                            new_path = 'spaces/{}/{}'.format(pack_name, item)
+                            data = source_zip.read(item)
+                            combined_zip.writestr(new_path, data, zipfile.ZIP_STORED)
+                            pack_files += 1
+                            total_files += 1
+                    
+                    print('[SkyRandomizer]   Added {} files'.format(pack_files))
+            
+            print('[SkyRandomizer] ===== COMBINED WOTMOD CREATED =====')
+            print('[SkyRandomizer] Location: {}'.format(combined_path))
+            print('[SkyRandomizer] Total packs: {}'.format(len(source_wotmods)))
+            print('[SkyRandomizer] Total files: {}'.format(total_files))
+            print('[SkyRandomizer] ====================================')
+            return True
+            
+        except Exception as e:
+            print('[SkyRandomizer] Error creating combined wotmod: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _scan_available_packs_in_wotmod(self, wotmod_path):
+        """Scan the combined wotmod to find available pack folders"""
+        try:
+            if not os.path.exists(wotmod_path):
+                print('[SkyRandomizer] Combined wotmod not found: {}'.format(wotmod_path))
                 return
             
-            all_files = os.listdir(self.skybox_packs_path)
-            print('[SkyRandomizer] Files in directory: {}'.format(all_files))
+            print('[SkyRandomizer] Scanning combined wotmod for packs...')
             
-            self.available_packs = [f for f in all_files if f.endswith('.wotmod')]
-            
-            if self.available_packs:
-                print('[SkyRandomizer] Found {} skybox packs:'.format(len(self.available_packs)))
-                for pack in self.available_packs:
-                    print('[SkyRandomizer]   - {}'.format(pack))
-            else:
-                print('[SkyRandomizer] No .wotmod files found')
+            with zipfile.ZipFile(wotmod_path, 'r') as z:
+                all_paths = z.namelist()
                 
+                # Find unique pack folders under spaces/
+                pack_folders = set()
+                for path in all_paths:
+                    if path.startswith('spaces/'):
+                        parts = path.split('/')
+                        if len(parts) >= 2:
+                            pack_folders.add(parts[1])
+                
+                self.available_packs = sorted(list(pack_folders))
+                
+                if self.available_packs:
+                    print('[SkyRandomizer] Found {} packs in combined wotmod:'.format(len(self.available_packs)))
+                    for pack in self.available_packs:
+                        print('[SkyRandomizer]   - {}'.format(pack))
+                else:
+                    print('[SkyRandomizer] No packs found in combined wotmod')
+                    
         except Exception as e:
-            print('[SkyRandomizer] Error scanning packs: {}'.format(e))
+            print('[SkyRandomizer] Error scanning combined wotmod: {}'.format(e))
             import traceback
             traceback.print_exc()
     
@@ -165,221 +354,87 @@ class SkyboxRandomizer:
         """Register game events"""
         try:
             g_playerEvents.onAccountBecomePlayer += self._on_account_ready
-            g_playerEvents.onAvatarBecomeNonPlayer += self._on_leave_battle
             print('[SkyRandomizer] Events registered successfully')
         except Exception as e:
             print('[SkyRandomizer] ERROR registering events: {}'.format(e))
     
-    def _on_leave_battle(self):
-        """Called when leaving battle and returning to garage"""
-        if not self.initialized:
+    def _hook_avatar_destruction(self):
+        """Hook into Avatar destruction to swap after battle ends"""
+        try:
+            original_onLeaveWorld = PlayerAvatar.onLeaveWorld
+            
+            def hooked_onLeaveWorld(self):
+                print('[SkyRandomizer] Avatar leaving world - battle ended!')
+                g_skyboxRandomizer._on_battle_ended()
+                return original_onLeaveWorld(self)
+            
+            PlayerAvatar.onLeaveWorld = hooked_onLeaveWorld
+            print('[SkyRandomizer] Avatar destruction hook installed')
+        except Exception as e:
+            print('[SkyRandomizer] ERROR hooking avatar destruction: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+    
+    def _hook_space_loading(self):
+        """Hook into space/map loading to inject our custom skybox path"""
+        if self.space_loading_hooked:
             return
         
-        print('[SkyRandomizer] Left battle, scheduling skybox swap...')
-        BigWorld.callback(0.5, self._swap_skybox)
+        try:
+            # This is where you'd hook BigWorld.loadSpace or similar
+            # The exact API depends on WoT's Python API version
+            # Common approaches:
+            
+            # Option 1: Hook BigWorld.loadResourceListBG
+            # Option 2: Hook space XML loading
+            # Option 3: Override space descriptor paths
+            
+            # Placeholder - needs actual WoT API knowledge
+            print('[SkyRandomizer] Space loading hook: This needs WoT-specific API')
+            print('[SkyRandomizer] You need to hook the function that loads space descriptors')
+            print('[SkyRandomizer] And modify the skybox/cubemap path to point to: spaces/{}/'.format(self.current_pack))
+            
+            # Example pseudocode:
+            # original_loadSpace = BigWorld.loadSpace
+            # def hooked_loadSpace(spacePath, *args, **kwargs):
+            #     # Modify spacePath or descriptor to use our custom sky
+            #     return original_loadSpace(spacePath, *args, **kwargs)
+            # BigWorld.loadSpace = hooked_loadSpace
+            
+            self.space_loading_hooked = True
+            
+        except Exception as e:
+            print('[SkyRandomizer] ERROR hooking space loading: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+    
+    def _on_battle_ended(self):
+        """Called when battle ends - pick new skybox for next battle"""
+        if not self.initialized or not self.available_packs:
+            return
+        
+        print('[SkyRandomizer] ===== BATTLE ENDED - SELECTING NEW SKYBOX =====')
+        
+        # Pick a different pack than current
+        if len(self.available_packs) > 1:
+            other_packs = [p for p in self.available_packs if p != self.current_pack]
+            self.current_pack = random.choice(other_packs)
+        else:
+            self.current_pack = self.available_packs[0]
+        
+        print('[SkyRandomizer] Next battle will use: {}'.format(self.current_pack))
+        print('[SkyRandomizer] Path: spaces/{}/'.format(self.current_pack))
     
     def _on_account_ready(self):
         """Called when account becomes player (garage loaded)"""
         if not self.initialized:
             print('[SkyRandomizer] Account ready, completing initialization...')
             self._complete_initialization()
+            # Install hooks
+            self._hook_avatar_destruction()
+            self._hook_space_loading()
         else:
             print('[SkyRandomizer] Returned to garage')
-    
-    def _force_delete_file(self, filepath):
-        """Force delete a file even if it's locked by the game"""
-        try:
-            # First attempt: normal deletion
-            if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                    print('[SkyRandomizer] Successfully deleted: {}'.format(filepath))
-                    return True
-                except Exception as e:
-                    print('[SkyRandomizer] Normal delete failed (expected): {}'.format(e))
-            
-            # Second attempt: Move to temp then delete
-            # Windows allows renaming locked files but not deleting them
-            try:
-                temp_name = filepath + '.old_{}'.format(random.randint(1000, 9999))
-                if os.path.exists(filepath):
-                    os.rename(filepath, temp_name)
-                    print('[SkyRandomizer] Renamed locked file to: {}'.format(temp_name))
-                    
-                    # Try to delete the temp file (may fail if still locked)
-                    try:
-                        os.remove(temp_name)
-                        print('[SkyRandomizer] Deleted temp file')
-                    except:
-                        print('[SkyRandomizer] Temp file still locked, will be cleaned up later')
-                return True
-            except Exception as e:
-                print('[SkyRandomizer] Rename attempt failed: {}'.format(e))
-            
-            # If all else fails, we'll just overwrite it
-            print('[SkyRandomizer] Will overwrite the file directly')
-            return True
-            
-        except Exception as e:
-            print('[SkyRandomizer] Force delete error: {}'.format(e))
-            import traceback
-            traceback.print_exc()
-            return False
-    
-    def _cleanup_old_temp_files(self):
-        """Clean up old .old_* temp files"""
-        try:
-            if not os.path.exists(self.mods_path):
-                return
-            
-            for filename in os.listdir(self.mods_path):
-                if '.old_' in filename and filename.startswith(self.hotswap_wotmod_name):
-                    old_file = os.path.join(self.mods_path, filename)
-                    try:
-                        os.remove(old_file)
-                        print('[SkyRandomizer] Cleaned up old temp file: {}'.format(filename))
-                    except:
-                        pass  # Still locked, skip
-        except Exception as e:
-            print('[SkyRandomizer] Cleanup warning: {}'.format(e))
-    
-    def _create_empty_hotswap_wotmod(self):
-        """Create an empty hotswap wotmod file"""
-        try:
-            print('[SkyRandomizer] Creating empty hotswap wotmod...')
-            
-            # Create empty zip file (UNCOMPRESSED - ZIP_STORED)
-            with zipfile.ZipFile(self.hotswap_wotmod_path, 'w', zipfile.ZIP_STORED) as zipf:
-                # Add a meta.xml file to make it valid
-                meta_content = '<?xml version="1.0" encoding="utf-8"?>\n<root>\n    <id>skyrandomizerHotSwap</id>\n    <version>1.0.0</version>\n    <n>Sky Randomizer HotSwap</n>\n    <description>Dynamically swapped skybox pack</description>\n</root>'
-                zipf.writestr('meta.xml', meta_content, zipfile.ZIP_STORED)
-            
-            print('[SkyRandomizer] Empty hotswap wotmod created (uncompressed)')
-            
-        except Exception as e:
-            print('[SkyRandomizer] Error creating empty wotmod: {}'.format(e))
-            import traceback
-            traceback.print_exc()
-    
-    def _create_hotswap_wotmod_from_pack(self, source_wotmod_path):
-        """Create/update the hotswap wotmod by copying content from source pack"""
-        try:
-            print('[SkyRandomizer] Creating hotswap wotmod from: {}'.format(source_wotmod_path))
-            
-            # Clean up old temp files first
-            self._cleanup_old_temp_files()
-            
-            # Create in a temporary location first
-            temp_fd, temp_wotmod = tempfile.mkstemp(suffix='.wotmod', dir=self.mods_path)
-            os.close(temp_fd)
-            
-            try:
-                # Copy content from source to temp file (UNCOMPRESSED)
-                print('[SkyRandomizer] Extracting source pack to temporary wotmod (uncompressed)...')
-                
-                with zipfile.ZipFile(source_wotmod_path, 'r') as source_zip:
-                    with zipfile.ZipFile(temp_wotmod, 'w', zipfile.ZIP_STORED) as target_zip:
-                        file_count = 0
-                        for item in source_zip.namelist():
-                            data = source_zip.read(item)
-                            # Write uncompressed
-                            target_zip.writestr(item, data, zipfile.ZIP_STORED)
-                            file_count += 1
-                        
-                        print('[SkyRandomizer] Copied {} files to temporary wotmod (uncompressed)'.format(file_count))
-                
-                # Now replace the hotswap file
-                # Force delete/rename the old one if it exists
-                self._force_delete_file(self.hotswap_wotmod_path)
-                
-                # Move temp file to final location
-                # Use copy + delete instead of rename to bypass locks
-                try:
-                    shutil.copy2(temp_wotmod, self.hotswap_wotmod_path)
-                    print('[SkyRandomizer] Hotswap wotmod created: {}'.format(self.hotswap_wotmod_path))
-                    
-                    # Try to delete temp file
-                    try:
-                        os.remove(temp_wotmod)
-                    except:
-                        print('[SkyRandomizer] Temp file cleanup will happen later')
-                    
-                    return True
-                    
-                except Exception as e:
-                    print('[SkyRandomizer] Error moving temp file: {}'.format(e))
-                    # If copy failed, try direct overwrite
-                    try:
-                        os.remove(self.hotswap_wotmod_path)
-                    except:
-                        pass
-                    shutil.move(temp_wotmod, self.hotswap_wotmod_path)
-                    print('[SkyRandomizer] Hotswap wotmod created (via move)')
-                    return True
-                
-            except Exception as e:
-                # Clean up temp file on error
-                try:
-                    os.remove(temp_wotmod)
-                except:
-                    pass
-                raise e
-                
-        except Exception as e:
-            print('[SkyRandomizer] Error creating hotswap wotmod: {}'.format(e))
-            import traceback
-            traceback.print_exc()
-            return False
-    
-    def _swap_skybox(self):
-        """Randomly select a pack and update the hotswap wotmod"""
-        if not self.initialized or not self.mods_path:
-            print('[SkyRandomizer] Not initialized yet, cannot swap')
-            return
-        
-        if not self.available_packs:
-            print('[SkyRandomizer] No skybox packs available to swap')
-            return
-        
-        try:
-            # Select a different pack than current
-            selected_pack = random.choice(self.available_packs)
-            
-            if selected_pack == self.current_pack and len(self.available_packs) > 1:
-                other_packs = [p for p in self.available_packs if p != self.current_pack]
-                selected_pack = random.choice(other_packs)
-            
-            print('[SkyRandomizer] ===== SWAPPING SKYBOX =====')
-            print('[SkyRandomizer] Selected: {}'.format(selected_pack))
-            
-            # Get source pack path
-            source_wotmod_path = os.path.join(self.skybox_packs_path, selected_pack)
-            
-            # Create/update hotswap wotmod
-            if self._create_hotswap_wotmod_from_pack(source_wotmod_path):
-                # Aggressively purge ALL resource caches
-                try:
-                    print('[SkyRandomizer] Purging resource caches...')
-                    ResMgr.purge('')  # Purge everything
-                    print('[SkyRandomizer] Cache purged')
-                except Exception as e:
-                    print('[SkyRandomizer] Cache purge warning: {}'.format(e))
-                
-                self.current_pack = selected_pack
-                
-                print('[SkyRandomizer] ===== SWAP COMPLETE =====')
-                print('[SkyRandomizer] Active pack: {}'.format(selected_pack))
-                print('[SkyRandomizer] HotSwap wotmod updated: {}'.format(self.hotswap_wotmod_path))
-                print('[SkyRandomizer] Changes should apply on next map load')
-            else:
-                print('[SkyRandomizer] ===== SWAP FAILED =====')
-                print('[SkyRandomizer] Could not create hotswap wotmod')
-            
-        except Exception as e:
-            print('[SkyRandomizer] ===== SWAP FAILED =====')
-            print('[SkyRandomizer] Error: {}'.format(e))
-            import traceback
-            traceback.print_exc()
 
 print('[SkyRandomizer] Creating mod instance...')
 try:
