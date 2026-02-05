@@ -1,6 +1,5 @@
 """
 SkyRandomizer - Randomizes skybox for each battle
-Installs skybox files directly into res_mods to override base files
 """
 
 import os
@@ -9,23 +8,18 @@ import zipfile
 import shutil
 import BigWorld
 
-print('[SkyRandomizer] ===== INITIALIZING =====')
-
 try:
     from PlayerEvents import g_playerEvents
-    print('[SkyRandomizer] PlayerEvents imported')
 except Exception as e:
     print('[SkyRandomizer] ERROR importing PlayerEvents: {}'.format(e))
 
 try:
     from Avatar import PlayerAvatar
-    print('[SkyRandomizer] Avatar imported')
 except Exception as e:
     print('[SkyRandomizer] ERROR importing Avatar: {}'.format(e))
 
 class SkyboxRandomizer:
     def __init__(self):
-        print('[SkyRandomizer] Initializing...')
         try:
             self.combined_wotmod_name = 'skyRandomizer_AllPacks.7z'
             self.mods_path = None
@@ -34,10 +28,10 @@ class SkyboxRandomizer:
             self.available_packs = []
             self.current_pack = None
             self.installed_pack = None
+            self.pack_history = []
             self.initialized = False
             
             self._register_events()
-            print('[SkyRandomizer] Events registered')
             
         except Exception as e:
             print('[SkyRandomizer] ERROR during initialization: {}'.format(e))
@@ -45,7 +39,6 @@ class SkyboxRandomizer:
             traceback.print_exc()
     
     def _get_game_version(self):
-        """Get game version from mods directory"""
         try:
             import game
             if hasattr(game, 'GameParams') and hasattr(game.GameParams, 'version'):
@@ -74,10 +67,8 @@ class SkyboxRandomizer:
         return None
     
     def _generate_combined_archive(self):
-        """Generate combined archive from individual .wotmod files"""
         try:
             if not os.path.exists(self.sky_packs_path):
-                print('[SkyRandomizer] skyPacks folder not found at: {}'.format(self.sky_packs_path))
                 return False
             
             combined_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
@@ -88,17 +79,14 @@ class SkyboxRandomizer:
                     wotmod_files.append(item)
             
             if not wotmod_files:
-                print('[SkyRandomizer] No .wotmod files found in skyPacks')
                 return False
             
-            print('[SkyRandomizer] Generating combined archive from {} .wotmod files...'.format(len(wotmod_files)))
+            print('[SkyRandomizer] Generating combined archive from {} packs...'.format(len(wotmod_files)))
             
             with zipfile.ZipFile(combined_path, 'w', zipfile.ZIP_DEFLATED) as out_zip:
                 for wotmod_file in wotmod_files:
                     wotmod_path = os.path.join(self.sky_packs_path, wotmod_file)
                     pack_name = os.path.splitext(wotmod_file)[0]
-                    
-                    print('[SkyRandomizer] Processing: {}'.format(wotmod_file))
                     
                     with zipfile.ZipFile(wotmod_path, 'r') as in_zip:
                         for file_info in in_zip.filelist:
@@ -110,7 +98,7 @@ class SkyboxRandomizer:
                             file_data = in_zip.read(file_info.filename)
                             out_zip.writestr(new_path, file_data)
             
-            print('[SkyRandomizer] Combined archive created: {}'.format(combined_path))
+            print('[SkyRandomizer] Combined archive created')
             return True
             
         except Exception as e:
@@ -120,7 +108,6 @@ class SkyboxRandomizer:
             return False
     
     def _complete_initialization(self):
-        """Complete initialization once game is ready"""
         if self.initialized:
             return
         
@@ -138,23 +125,21 @@ class SkyboxRandomizer:
             
             combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
             
-            if not os.path.exists(combined_wotmod_path):
-                print('[SkyRandomizer] Combined archive not found, generating...')
-                if not self._generate_combined_archive():
-                    print('[SkyRandomizer] Failed to generate combined archive')
-                    return
+            if os.path.exists(combined_wotmod_path):
+                os.remove(combined_wotmod_path)
+            
+            if not self._generate_combined_archive():
+                return
             
             if os.path.exists(combined_wotmod_path):
                 self._scan_available_packs_in_wotmod(combined_wotmod_path)
                 
                 if self.available_packs:
                     self.current_pack = random.choice(self.available_packs)
-                    print('[SkyRandomizer] Initial pack: {}'.format(self.current_pack))
+                    self.pack_history.append(self.current_pack)
                     print('[SkyRandomizer] Available packs: {}'.format(', '.join(self.available_packs)))
                     
                     self._install_pack(self.current_pack, combined_wotmod_path)
-            else:
-                print('[SkyRandomizer] WARNING: Combined wotmod not found at: {}'.format(combined_wotmod_path))
             
             self.initialized = True
             
@@ -164,7 +149,6 @@ class SkyboxRandomizer:
             traceback.print_exc()
     
     def _scan_available_packs_in_wotmod(self, wotmod_path):
-        """Scan the combined wotmod to find available pack folders"""
         try:
             with zipfile.ZipFile(wotmod_path, 'r') as z:
                 all_paths = z.namelist()
@@ -181,9 +165,8 @@ class SkyboxRandomizer:
             print('[SkyRandomizer] Error scanning wotmod: {}'.format(e))
     
     def _install_pack(self, pack_name, wotmod_path):
-        """Install a pack's files into res_mods"""
         try:
-            print('[SkyRandomizer] Installing pack: {}'.format(pack_name))
+            print('[SkyRandomizer] Installing: {}'.format(pack_name))
             
             if self.installed_pack:
                 self._uninstall_pack()
@@ -210,7 +193,6 @@ class SkyboxRandomizer:
                         
                         files_installed += 1
                 
-                print('[SkyRandomizer] Installed {} files from {}'.format(files_installed, pack_name))
                 self.installed_pack = pack_name
                 
         except Exception as e:
@@ -219,12 +201,9 @@ class SkyboxRandomizer:
             traceback.print_exc()
     
     def _uninstall_pack(self):
-        """Remove installed pack files from res_mods"""
         try:
             if not self.installed_pack:
                 return
-            
-            print('[SkyRandomizer] Uninstalling pack: {}'.format(self.installed_pack))
             
             spaces_path = os.path.join(self.res_mods_path, 'spaces')
             if os.path.exists(spaces_path):
@@ -234,7 +213,6 @@ class SkyboxRandomizer:
                         environments_path = os.path.join(map_path, 'environments')
                         if os.path.exists(environments_path):
                             shutil.rmtree(environments_path)
-                            print('[SkyRandomizer] Removed: {}'.format(environments_path))
             
             self.installed_pack = None
             
@@ -242,14 +220,12 @@ class SkyboxRandomizer:
             print('[SkyRandomizer] ERROR uninstalling pack: {}'.format(e))
     
     def _register_events(self):
-        """Register game events"""
         try:
             g_playerEvents.onAccountBecomePlayer += self._on_account_ready
         except Exception as e:
             print('[SkyRandomizer] ERROR registering events: {}'.format(e))
     
     def _hook_avatar_destruction(self):
-        """Hook Avatar.onLeaveWorld to detect battle end"""
         try:
             original_onLeaveWorld = PlayerAvatar.onLeaveWorld
             
@@ -258,23 +234,32 @@ class SkyboxRandomizer:
                 return original_onLeaveWorld(self)
             
             PlayerAvatar.onLeaveWorld = hooked_onLeaveWorld
-            print('[SkyRandomizer] Avatar destruction hook installed')
         except Exception as e:
             print('[SkyRandomizer] ERROR hooking avatar destruction: {}'.format(e))
     
     def _on_battle_ended(self):
-        """Called when battle ends - select and install new skybox for next battle"""
         if not self.initialized or not self.available_packs:
             return
         
         try:
-            self.current_pack = random.choice(self.available_packs)
-            print('[SkyRandomizer] Next battle will use: {}'.format(self.current_pack))
+            if len(self.pack_history) >= 2 and self.pack_history[-1] == self.pack_history[-2]:
+                available_choices = [p for p in self.available_packs if p != self.pack_history[-1]]
+                if available_choices:
+                    self.current_pack = random.choice(available_choices)
+                else:
+                    self.current_pack = random.choice(self.available_packs)
+            else:
+                self.current_pack = random.choice(self.available_packs)
+            
+            self.pack_history.append(self.current_pack)
+            if len(self.pack_history) > 10:
+                self.pack_history.pop(0)
+            
+            print('[SkyRandomizer] Next battle: {}'.format(self.current_pack))
             
             combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
             if os.path.exists(combined_wotmod_path):
                 self._install_pack(self.current_pack, combined_wotmod_path)
-                print('[SkyRandomizer] Pack {} installed and ready for next battle'.format(self.current_pack))
             
         except Exception as e:
             print('[SkyRandomizer] ERROR in _on_battle_ended: {}'.format(e))
@@ -282,18 +267,15 @@ class SkyboxRandomizer:
             traceback.print_exc()
     
     def _on_account_ready(self):
-        """Called when account becomes player (garage loaded)"""
         if not self.initialized:
             self._complete_initialization()
             self._hook_avatar_destruction()
             print('[SkyRandomizer] Ready!')
 
-print('[SkyRandomizer] Creating mod instance...')
+print('[SkyRandomizer] Loading...')
 try:
     g_skyboxRandomizer = SkyboxRandomizer()
-    print('[SkyRandomizer] ===== LOADED =====')
 except Exception as e:
-    print('[SkyRandomizer] ===== FATAL ERROR =====')
-    print('[SkyRandomizer] Failed to initialize: {}'.format(e))
+    print('[SkyRandomizer] FATAL ERROR: {}'.format(e))
     import traceback
     traceback.print_exc()
