@@ -1,7 +1,3 @@
-"""
-SkyRandomizer - Randomizes skybox for each battle
-"""
-
 import os
 import random
 import zipfile
@@ -11,20 +7,20 @@ import BigWorld
 try:
     from PlayerEvents import g_playerEvents
 except Exception as e:
-    print('[SkyRandomizer] ERROR importing PlayerEvents: {}'.format(e))
+    print('[SBRandomizer] ERROR importing PlayerEvents: {}'.format(e))
 
 try:
     from Avatar import PlayerAvatar
 except Exception as e:
-    print('[SkyRandomizer] ERROR importing Avatar: {}'.format(e))
+    print('[SBRandomizer] ERROR importing Avatar: {}'.format(e))
 
 class SkyboxRandomizer:
     def __init__(self):
         try:
-            self.combined_wotmod_name = 'skyRandomizer_AllPacks.7z'
+            self.combined_wotmod_name = 'sbRandomizer_AllPacks.7z'
             self.mods_path = None
             self.res_mods_path = None
-            self.sky_packs_path = './mods/skyPacks/'
+            self.sky_packs_path = './mods/sbr_Packs/'
             self.available_packs = []
             self.current_pack = None
             self.installed_pack = None
@@ -34,7 +30,7 @@ class SkyboxRandomizer:
             self._register_events()
             
         except Exception as e:
-            print('[SkyRandomizer] ERROR during initialization: {}'.format(e))
+            print('[SBRandomizer] ERROR during initialization: {}'.format(e))
             import traceback
             traceback.print_exc()
     
@@ -81,7 +77,7 @@ class SkyboxRandomizer:
             if not wotmod_files:
                 return False
             
-            print('[SkyRandomizer] Generating combined archive from {} packs...'.format(len(wotmod_files)))
+            print('[SBRandomizer] Generating combined archive from {} packs...'.format(len(wotmod_files)))
             
             with zipfile.ZipFile(combined_path, 'w', zipfile.ZIP_DEFLATED) as out_zip:
                 for wotmod_file in wotmod_files:
@@ -98,11 +94,11 @@ class SkyboxRandomizer:
                             file_data = in_zip.read(file_info.filename)
                             out_zip.writestr(new_path, file_data)
             
-            print('[SkyRandomizer] Combined archive created')
+            print('[SBRandomizer] Combined archive created')
             return True
             
         except Exception as e:
-            print('[SkyRandomizer] ERROR generating combined archive: {}'.format(e))
+            print('[SBRandomizer] ERROR generating combined archive: {}'.format(e))
             import traceback
             traceback.print_exc()
             return False
@@ -137,14 +133,14 @@ class SkyboxRandomizer:
                 if self.available_packs:
                     self.current_pack = random.choice(self.available_packs)
                     self.pack_history.append(self.current_pack)
-                    print('[SkyRandomizer] Available packs: {}'.format(', '.join(self.available_packs)))
+                    print('[SBRandomizer] Available packs: {}'.format(', '.join(self.available_packs)))
                     
                     self._install_pack(self.current_pack, combined_wotmod_path)
             
             self.initialized = True
             
         except Exception as e:
-            print('[SkyRandomizer] ERROR during initialization: {}'.format(e))
+            print('[SBRandomizer] ERROR during initialization: {}'.format(e))
             import traceback
             traceback.print_exc()
     
@@ -162,11 +158,11 @@ class SkyboxRandomizer:
                 self.available_packs = sorted(list(pack_folders))
                     
         except Exception as e:
-            print('[SkyRandomizer] Error scanning wotmod: {}'.format(e))
+            print('[SBRandomizer] Error scanning wotmod: {}'.format(e))
     
     def _install_pack(self, pack_name, wotmod_path):
         try:
-            print('[SkyRandomizer] Installing: {}'.format(pack_name))
+            print('[SBRandomizer] Installing: {}'.format(pack_name))
             
             if self.installed_pack:
                 self._uninstall_pack()
@@ -196,7 +192,7 @@ class SkyboxRandomizer:
                 self.installed_pack = pack_name
                 
         except Exception as e:
-            print('[SkyRandomizer] ERROR installing pack: {}'.format(e))
+            print('[SBRandomizer] ERROR installing pack: {}'.format(e))
             import traceback
             traceback.print_exc()
     
@@ -217,13 +213,13 @@ class SkyboxRandomizer:
             self.installed_pack = None
             
         except Exception as e:
-            print('[SkyRandomizer] ERROR uninstalling pack: {}'.format(e))
+            print('[SBRandomizer] ERROR uninstalling pack: {}'.format(e))
     
     def _register_events(self):
         try:
             g_playerEvents.onAccountBecomePlayer += self._on_account_ready
         except Exception as e:
-            print('[SkyRandomizer] ERROR registering events: {}'.format(e))
+            print('[SBRandomizer] ERROR registering events: {}'.format(e))
     
     def _hook_avatar_destruction(self):
         try:
@@ -235,7 +231,7 @@ class SkyboxRandomizer:
             
             PlayerAvatar.onLeaveWorld = hooked_onLeaveWorld
         except Exception as e:
-            print('[SkyRandomizer] ERROR hooking avatar destruction: {}'.format(e))
+            print('[SBRandomizer] ERROR hooking avatar destruction: {}'.format(e))
     
     def _on_battle_ended(self):
         if not self.initialized or not self.available_packs:
@@ -255,14 +251,14 @@ class SkyboxRandomizer:
             if len(self.pack_history) > 10:
                 self.pack_history.pop(0)
             
-            print('[SkyRandomizer] Next battle: {}'.format(self.current_pack))
+            print('[SBRandomizer] Next battle: {}'.format(self.current_pack))
             
             combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
             if os.path.exists(combined_wotmod_path):
                 self._install_pack(self.current_pack, combined_wotmod_path)
             
         except Exception as e:
-            print('[SkyRandomizer] ERROR in _on_battle_ended: {}'.format(e))
+            print('[SBRandomizer] ERROR in _on_battle_ended: {}'.format(e))
             import traceback
             traceback.print_exc()
     
@@ -270,12 +266,12 @@ class SkyboxRandomizer:
         if not self.initialized:
             self._complete_initialization()
             self._hook_avatar_destruction()
-            print('[SkyRandomizer] Ready!')
+            print('[SBRandomizer] Ready!')
 
-print('[SkyRandomizer] Loading...')
+print('[SBRandomizer] Loading...')
 try:
     g_skyboxRandomizer = SkyboxRandomizer()
 except Exception as e:
-    print('[SkyRandomizer] FATAL ERROR: {}'.format(e))
+    print('[SBRandomizer] FATAL ERROR: {}'.format(e))
     import traceback
     traceback.print_exc()
