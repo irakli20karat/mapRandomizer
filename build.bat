@@ -6,13 +6,13 @@ echo SkyRandomizer Build Script
 echo ========================================
 echo.
 
-REM Set paths
+REM
 set PYTHON27=C:\Python27\python.exe
 set MOD_FOLDER=mod
 set BUILD_FOLDER=build
 set OUTPUT_NAME=sbRandomizer.wotmod
 
-REM Check if mod folder exists
+REM
 if not exist "%MOD_FOLDER%" (
     echo ERROR: mod folder not found!
     echo Please create a 'mod' folder with your Python files
@@ -21,7 +21,7 @@ if not exist "%MOD_FOLDER%" (
     exit /b 1
 )
 
-REM Check if Python 2.7 exists
+REM
 if not exist "%PYTHON27%" (
     echo WARNING: Python 2.7 not found at %PYTHON27%
     echo Skipping compilation, copying .py files as-is
@@ -32,13 +32,13 @@ if not exist "%PYTHON27%" (
 )
 echo.
 
-REM Clean build folder
+REM
 if exist "%BUILD_FOLDER%" (
     echo Cleaning old build folder...
     rmdir /s /q "%BUILD_FOLDER%" 2>nul
 )
 
-REM Create build folder
+REM
 echo Creating build folder...
 mkdir "%BUILD_FOLDER%" 2>nul
 if not exist "%BUILD_FOLDER%" (
@@ -47,7 +47,7 @@ if not exist "%BUILD_FOLDER%" (
     exit /b 1
 )
 
-REM Copy mod folder structure to build
+REM
 echo Copying mod folder to build...
 xcopy "%MOD_FOLDER%\*" "%BUILD_FOLDER%\" /E /I /Y /Q
 if errorlevel 1 (
@@ -58,7 +58,7 @@ if errorlevel 1 (
 echo Copy complete.
 echo.
 
-REM Compile .py files if Python is available
+REM
 if "%SKIP_COMPILE%"=="0" (
     echo Compiling Python files to .pyc...
     for /r "%BUILD_FOLDER%" %%f in (*.py) do (
@@ -80,11 +80,11 @@ if "%SKIP_COMPILE%"=="0" (
 )
 echo.
 
-REM Create the .wotmod
+REM
 echo Creating %OUTPUT_NAME%...
 if exist "%OUTPUT_NAME%" del "%OUTPUT_NAME%" 2>nul
 
-REM Check for 7-Zip
+REM
 set SEVENZIP=C:\Program Files\7-Zip\7z.exe
 if not exist "%SEVENZIP%" set SEVENZIP=C:\Program Files (x86)\7-Zip\7z.exe
 if not exist "%SEVENZIP%" set SEVENZIP=7z.exe
@@ -130,7 +130,7 @@ for %%A in ("%OUTPUT_NAME%") do echo %%~zA bytes
 echo ========================================
 echo.
 
-REM Optional: Clean up build folder
+REM
 set /p CLEANUP="Clean up build folder? (Y/N): "
 if /i "%CLEANUP%"=="Y" (
     echo Cleaning build folder...
