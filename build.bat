@@ -6,13 +6,15 @@ echo SkyRandomizer Build Script
 echo ========================================
 echo.
 
-REM
+REM Configuration
 set PYTHON27=C:\Python27\python.exe
 set MOD_FOLDER=mod
 set BUILD_FOLDER=build
 set OUTPUT_NAME=sbRandomizer.wotmod
+set PACKS_FOLDER=default
+set FINAL_ZIP=sbRandomizer_release.zip
 
-REM
+REM Check mod folder
 if not exist "%MOD_FOLDER%" (
     echo ERROR: mod folder not found!
     echo Please create a 'mod' folder with your Python files
@@ -21,7 +23,7 @@ if not exist "%MOD_FOLDER%" (
     exit /b 1
 )
 
-REM
+REM Check Python 2.7
 if not exist "%PYTHON27%" (
     echo WARNING: Python 2.7 not found at %PYTHON27%
     echo Skipping compilation, copying .py files as-is
@@ -32,13 +34,13 @@ if not exist "%PYTHON27%" (
 )
 echo.
 
-REM
+REM Clean old build folder automatically
 if exist "%BUILD_FOLDER%" (
     echo Cleaning old build folder...
     rmdir /s /q "%BUILD_FOLDER%" 2>nul
 )
 
-REM
+REM Create build folder
 echo Creating build folder...
 mkdir "%BUILD_FOLDER%" 2>nul
 if not exist "%BUILD_FOLDER%" (
@@ -47,7 +49,7 @@ if not exist "%BUILD_FOLDER%" (
     exit /b 1
 )
 
-REM
+REM Copy mod files
 echo Copying mod folder to build...
 xcopy "%MOD_FOLDER%\*" "%BUILD_FOLDER%\" /E /I /Y /Q
 if errorlevel 1 (
@@ -58,7 +60,7 @@ if errorlevel 1 (
 echo Copy complete.
 echo.
 
-REM
+REM Compile Python files
 if "%SKIP_COMPILE%"=="0" (
     echo Compiling Python files to .pyc...
     for /r "%BUILD_FOLDER%" %%f in (*.py) do (
@@ -80,11 +82,11 @@ if "%SKIP_COMPILE%"=="0" (
 )
 echo.
 
-REM
+REM Create .wotmod file
 echo Creating %OUTPUT_NAME%...
 if exist "%OUTPUT_NAME%" del "%OUTPUT_NAME%" 2>nul
 
-REM
+REM Find 7-Zip
 set SEVENZIP=C:\Program Files\7-Zip\7z.exe
 if not exist "%SEVENZIP%" set SEVENZIP=C:\Program Files (x86)\7-Zip\7z.exe
 if not exist "%SEVENZIP%" set SEVENZIP=7z.exe
@@ -130,16 +132,82 @@ for %%A in ("%OUTPUT_NAME%") do echo %%~zA bytes
 echo ========================================
 echo.
 
-REM
-set /p CLEANUP="Clean up build folder? (Y/N): "
-if /i "%CLEANUP%"=="Y" (
-    echo Cleaning build folder...
-    rmdir /s /q "%BUILD_FOLDER%" 2>nul
-    echo Build folder removed.
-) else (
-    echo Build folder kept for inspection.
+REM Clean build folder automatically
+echo Cleaning build folder...
+rmdir /s /q "%BUILD_FOLDER%" 2>nul
+echo Build folder removed.
+echo.
+
+REM Create final release package
+echo ========================================
+echo Creating Release Package
+echo ========================================
+echo.
+
+REM Clean old release
+if exist "%FINAL_ZIP%" (
+    echo Removing old release package...
+    del "%FINAL_ZIP%" 2>nul
 )
 
+REM Create temporary packaging structure
+set TEMP_PACKAGE=temp_package
+if exist "%TEMP_PACKAGE%" rmdir /s /q "%TEMP_PACKAGE%" 2>nul
+mkdir "%TEMP_PACKAGE%\mods\[current_version]" 2>nul
+mkdir "%TEMP_PACKAGE%\mods\sbr_Packs" 2>nul
+
+REM Copy main .wotmod to versioned folder
+echo Copying %OUTPUT_NAME% to mods/[current_version]/...
+copy "%OUTPUT_NAME%" "%TEMP_PACKAGE%\mods\[current_version]\" >nul
+if errorlevel 1 (
+    echo ERROR: Failed to copy %OUTPUT_NAME%
+    pause
+    exit /b 1
+)
+
+REM Copy default packs if folder exists
+if exist "%PACKS_FOLDER%" (
+    echo Copying packs from '%PACKS_FOLDER%' folder to mods/sbr_Packs/...
+    xcopy "%PACKS_FOLDER%\*.wotmod" "%TEMP_PACKAGE%\mods\sbr_Packs\" /Y /Q
+    if errorlevel 1 (
+        echo WARNING: No .wotmod files found in '%PACKS_FOLDER%' folder
+    ) else (
+        echo Packs copied successfully.
+    )
+) else (
+    echo WARNING: '%PACKS_FOLDER%' folder not found - skipping packs
+    echo Create a '%PACKS_FOLDER%' folder with .wotmod files to include them
+)
+echo.
+
+REM Create final ZIP archive
+echo Creating %FINAL_ZIP%...
+pushd "%TEMP_PACKAGE%"
+"%SEVENZIP%" a -tzip -mx9 "..\%FINAL_ZIP%" * -r
+set PACKAGE_ERROR=!ERRORLEVEL!
+popd
+
+if %PACKAGE_ERROR% NEQ 0 (
+    echo ERROR: Failed to create release package
+    pause
+    exit /b 1
+)
+
+REM Clean up temp packaging folder
+rmdir /s /q "%TEMP_PACKAGE%" 2>nul
+
+echo.
+echo ========================================
+echo RELEASE PACKAGE CREATED!
+echo ========================================
+echo Main mod: %FINAL_ZIP%\mods\[current_version]\%OUTPUT_NAME%
+if exist "%PACKS_FOLDER%" (
+    echo Packs: %FINAL_ZIP%\mods\sbr_Packs\
+)
+echo.
+echo File: %CD%\%FINAL_ZIP%
+for %%A in ("%FINAL_ZIP%") do echo Size: %%~zA bytes
+echo ========================================
 echo.
 echo Done!
 pause

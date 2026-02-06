@@ -84,15 +84,27 @@ class SkyboxRandomizer:
                     wotmod_path = os.path.join(self.sky_packs_path, wotmod_file)
                     pack_name = os.path.splitext(wotmod_file)[0]
                     
-                    with zipfile.ZipFile(wotmod_path, 'r') as in_zip:
-                        for file_info in in_zip.filelist:
-                            if file_info.filename.endswith('/'):
-                                continue
+                    try:
+                        with zipfile.ZipFile(wotmod_path, 'r') as in_zip:
+                            files_found = False
+                            for file_info in in_zip.filelist:
+                                if file_info.filename.endswith('/'):
+                                    continue
+                                
+                                new_path = os.path.join('spaces', pack_name, file_info.filename)
+                                
+                                file_data = in_zip.read(file_info.filename)
+                                out_zip.writestr(new_path, file_data)
+                                files_found = True
                             
-                            new_path = os.path.join('spaces', pack_name, file_info.filename)
-                            
-                            file_data = in_zip.read(file_info.filename)
-                            out_zip.writestr(new_path, file_data)
+                            if not files_found:
+                                marker_path = 'spaces/{}/empty.txt'.format(pack_name)
+                                out_zip.writestr(marker_path, 'This is an empty pack - uses default sky')
+                                print('[SBRandomizer] Pack "{}" is empty - will use default sky'.format(pack_name))
+                    
+                    except zipfile.BadZipFile:
+                        print('[SBRandomizer] WARNING: "{}" is not a valid zip file, skipping'.format(wotmod_file))
+                        continue
             
             print('[SBRandomizer] Combined archive created')
             return True
