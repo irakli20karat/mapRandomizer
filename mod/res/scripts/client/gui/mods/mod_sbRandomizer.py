@@ -25,6 +25,7 @@ class SkyboxRandomizer:
             self.current_pack = None
             self.installed_pack = None
             self.pack_history = []
+            self.tracked_files = []
             self.initialized = False
             
             self._register_events()
@@ -196,12 +197,18 @@ class SkyboxRandomizer:
                         if not os.path.exists(dest_dir):
                             os.makedirs(dest_dir)
                         
+                        # Track top-level files/folders
+                        top_level = rel_path.split(os.sep)[0] if os.sep in rel_path else rel_path.split('/')[0]
+                        if top_level not in self.tracked_files:
+                            self.tracked_files.append(top_level)
+                        
                         with z.open(zip_path) as src, open(dest_path, 'wb') as dst:
                             shutil.copyfileobj(src, dst)
                         
                         files_installed += 1
                 
                 self.installed_pack = pack_name
+                print('[SBRandomizer] Installed {} files from pack: {}'.format(files_installed, pack_name))
                 
         except Exception as e:
             print('[SBRandomizer] ERROR installing pack: {}'.format(e))
@@ -215,15 +222,20 @@ class SkyboxRandomizer:
             
             print('[SBRandomizer] Uninstalling: {}'.format(self.installed_pack))
             
-            # Remove everything from res_mods/{version}/
+            # Remove all tracked files/folders from res_mods/{version}/
             if os.path.exists(self.res_mods_path):
-                for item in os.listdir(self.res_mods_path):
+                for item in self.tracked_files:
                     item_path = os.path.join(self.res_mods_path, item)
+                    if not os.path.exists(item_path):
+                        continue
+                    
                     try:
                         if os.path.isdir(item_path):
                             shutil.rmtree(item_path)
+                            print('[SBRandomizer] Removed directory: {}'.format(item))
                         else:
                             os.remove(item_path)
+                            print('[SBRandomizer] Removed file: {}'.format(item))
                     except Exception as e:
                         print('[SBRandomizer] Warning: Could not remove {}: {}'.format(item, e))
                 
