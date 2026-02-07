@@ -213,14 +213,21 @@ class SkyboxRandomizer:
             if not self.installed_pack:
                 return
             
-            spaces_path = os.path.join(self.res_mods_path, 'spaces')
-            if os.path.exists(spaces_path):
-                for map_folder in os.listdir(spaces_path):
-                    map_path = os.path.join(spaces_path, map_folder)
-                    if os.path.isdir(map_path):
-                        environments_path = os.path.join(map_path, 'environments')
-                        if os.path.exists(environments_path):
-                            shutil.rmtree(environments_path)
+            print('[SBRandomizer] Uninstalling: {}'.format(self.installed_pack))
+            
+            # Remove everything from res_mods/{version}/
+            if os.path.exists(self.res_mods_path):
+                for item in os.listdir(self.res_mods_path):
+                    item_path = os.path.join(self.res_mods_path, item)
+                    try:
+                        if os.path.isdir(item_path):
+                            shutil.rmtree(item_path)
+                        else:
+                            os.remove(item_path)
+                    except Exception as e:
+                        print('[SBRandomizer] Warning: Could not remove {}: {}'.format(item, e))
+                
+                print('[SBRandomizer] Cleaned res_mods directory')
             
             self.installed_pack = None
             
