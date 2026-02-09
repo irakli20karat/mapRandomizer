@@ -295,6 +295,8 @@ class SkyboxRandomizer:
     
     def _on_account_ready(self):
         if not self.initialized:
+            BigWorld.callback(5.0, self._complete_initialization)
+            BigWorld.callback(5.0, self._hook_avatar_destruction)
             self._complete_initialization()
             self._hook_avatar_destruction()
             print('[SBRandomizer] Ready!')
