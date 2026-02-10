@@ -92,14 +92,14 @@ class SkyboxRandomizer:
                                 if file_info.filename.endswith('/'):
                                     continue
                                 
-                                new_path = os.path.join('spaces', pack_name, file_info.filename)
+                                new_path = os.path.join('packs', pack_name, file_info.filename)
                                 
                                 file_data = in_zip.read(file_info.filename)
                                 out_zip.writestr(new_path, file_data)
                                 files_found = True
                             
                             if not files_found:
-                                marker_path = 'spaces/{}/empty.txt'.format(pack_name)
+                                marker_path = 'packs/{}/empty.txt'.format(pack_name)
                                 out_zip.writestr(marker_path, 'This is an empty pack - uses default sky')
                                 print('[SBRandomizer] Pack "{}" is empty - will use default sky'.format(pack_name))
                     
@@ -163,7 +163,7 @@ class SkyboxRandomizer:
                 all_paths = z.namelist()
                 pack_folders = set()
                 for path in all_paths:
-                    if path.startswith('spaces/'):
+                    if path.startswith('packs/'):
                         parts = path.split('/')
                         if len(parts) >= 2:
                             pack_folders.add(parts[1])
@@ -181,7 +181,7 @@ class SkyboxRandomizer:
                 self._uninstall_pack()
             
             with zipfile.ZipFile(wotmod_path, 'r') as z:
-                pack_prefix = 'spaces/{}/res/'.format(pack_name)
+                pack_prefix = 'packs/{}/res/'.format(pack_name)
                 files_installed = 0
                 
                 for zip_path in z.namelist():
@@ -197,7 +197,6 @@ class SkyboxRandomizer:
                         if not os.path.exists(dest_dir):
                             os.makedirs(dest_dir)
                         
-                        # Track top-level files/folders
                         top_level = rel_path.split(os.sep)[0] if os.sep in rel_path else rel_path.split('/')[0]
                         if top_level not in self.tracked_files:
                             self.tracked_files.append(top_level)
@@ -222,7 +221,6 @@ class SkyboxRandomizer:
             
             print('[SBRandomizer] Uninstalling: {}'.format(self.installed_pack))
             
-            # Remove all tracked files/folders from res_mods/{version}/
             if os.path.exists(self.res_mods_path):
                 for item in self.tracked_files:
                     item_path = os.path.join(self.res_mods_path, item)
@@ -295,8 +293,6 @@ class SkyboxRandomizer:
     
     def _on_account_ready(self):
         if not self.initialized:
-            BigWorld.callback(5.0, self._complete_initialization)
-            BigWorld.callback(5.0, self._hook_avatar_destruction)
             self._complete_initialization()
             self._hook_avatar_destruction()
             print('[SBRandomizer] Ready!')
