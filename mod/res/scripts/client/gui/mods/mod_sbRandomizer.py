@@ -222,6 +222,9 @@ class SkyboxRandomizer:
             print('[SBRandomizer] Uninstalling: {}'.format(self.installed_pack))
             
             if os.path.exists(self.res_mods_path):
+                removed_count = 0
+                failed_removals = []
+                
                 for item in self.tracked_files:
                     item_path = os.path.join(self.res_mods_path, item)
                     if not os.path.exists(item_path):
@@ -234,15 +237,24 @@ class SkyboxRandomizer:
                         else:
                             os.remove(item_path)
                             print('[SBRandomizer] Removed file: {}'.format(item))
+                        removed_count += 1
                     except Exception as e:
-                        print('[SBRandomizer] Warning: Could not remove {}: {}'.format(item, e))
+                        print('[SBRandomizer] ERROR: Could not remove {}: {}'.format(item, e))
+                        failed_removals.append(item)
                 
-                print('[SBRandomizer] Cleaned res_mods directory')
+                if failed_removals:
+                    print('[SBRandomizer] WARNING: Failed to remove {} items: {}'.format(
+                        len(failed_removals), ', '.join(failed_removals)))
+                else:
+                    print('[SBRandomizer] Successfully cleaned {} items from res_mods'.format(removed_count))
             
             self.installed_pack = None
+            self.tracked_files = []
             
         except Exception as e:
             print('[SBRandomizer] ERROR uninstalling pack: {}'.format(e))
+            import traceback
+            traceback.print_exc()
     
     def _register_events(self):
         try:
@@ -282,12 +294,20 @@ class SkyboxRandomizer:
             
             print('[SBRandomizer] Next battle: {}'.format(self.current_pack))
             
-            combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
-            if os.path.exists(combined_wotmod_path):
-                self._install_pack(self.current_pack, combined_wotmod_path)
+            BigWorld.callback(2.0, self._delayed_pack_swap)
             
         except Exception as e:
             print('[SBRandomizer] ERROR in _on_battle_ended: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+
+    def _delayed_pack_swap(self):
+        try:
+            combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
+            if os.path.exists(combined_wotmod_path):
+                self._install_pack(self.current_pack, combined_wotmod_path)
+        except Exception as e:
+            print('[SBRandomizer] ERROR in delayed pack swap: {}'.format(e))
             import traceback
             traceback.print_exc()
     
