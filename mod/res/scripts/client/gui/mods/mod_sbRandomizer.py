@@ -27,6 +27,8 @@ class SkyboxRandomizer:
             self.pack_history = []
             self.tracked_files = []
             self.initialized = False
+            self.in_battle = False
+            self.pending_swap_callback = None
             
             self._register_events()
             
@@ -180,6 +182,8 @@ class SkyboxRandomizer:
             if self.installed_pack:
                 self._uninstall_pack()
             
+            self.tracked_files = []
+            
             with zipfile.ZipFile(wotmod_path, 'r') as z:
                 pack_prefix = 'packs/{}/res/'.format(pack_name)
                 files_installed = 0
@@ -197,7 +201,7 @@ class SkyboxRandomizer:
                         if not os.path.exists(dest_dir):
                             os.makedirs(dest_dir)
                         
-                        top_level = rel_path.split(os.sep)[0] if os.sep in rel_path else rel_path.split('/')[0]
+                        top_level = rel_path.split('/')[0]
                         if top_level not in self.tracked_files:
                             self.tracked_files.append(top_level)
                         
@@ -245,8 +249,6 @@ class SkyboxRandomizer:
                 if failed_removals:
                     print('[SBRandomizer] WARNING: Failed to remove {} items: {}'.format(
                         len(failed_removals), ', '.join(failed_removals)))
-                else:
-                    print('[SBRandomizer] Successfully cleaned {} items from res_mods'.format(removed_count))
             
             self.installed_pack = None
             self.tracked_files = []
@@ -262,19 +264,39 @@ class SkyboxRandomizer:
         except Exception as e:
             print('[SBRandomizer] ERROR registering events: {}'.format(e))
     
-    def _hook_avatar_destruction(self):
+    def _hook_avatar_events(self):
         try:
             original_onLeaveWorld = PlayerAvatar.onLeaveWorld
+            original_onEnterWorld = PlayerAvatar.onEnterWorld
             
             def hooked_onLeaveWorld(self):
                 g_skyboxRandomizer._on_battle_ended()
                 return original_onLeaveWorld(self)
             
+            def hooked_onEnterWorld(self, prereqs):
+                g_skyboxRandomizer._on_battle_started()
+                return original_onEnterWorld(self, prereqs)
+            
             PlayerAvatar.onLeaveWorld = hooked_onLeaveWorld
+            PlayerAvatar.onEnterWorld = hooked_onEnterWorld
+            
         except Exception as e:
-            print('[SBRandomizer] ERROR hooking avatar destruction: {}'.format(e))
+            print('[SBRandomizer] ERROR hooking avatar events: {}'.format(e))
+    
+    def _on_battle_started(self):
+        self.in_battle = True
+        
+        if self.pending_swap_callback is not None:
+            print('[SBRandomizer] Battle started - cancelling pending pack swap')
+            try:
+                BigWorld.cancelCallback(self.pending_swap_callback)
+            except:
+                pass
+            self.pending_swap_callback = None
     
     def _on_battle_ended(self):
+        self.in_battle = False
+        
         if not self.initialized or not self.available_packs:
             return
         
@@ -292,9 +314,11 @@ class SkyboxRandomizer:
             if len(self.pack_history) > 10:
                 self.pack_history.pop(0)
             
-            print('[SBRandomizer] Next battle: {}'.format(self.current_pack))
+            print('[SBRandomizer] Next battle will use: {}'.format(self.current_pack))
             
-            BigWorld.callback(2.0, self._delayed_pack_swap)
+            combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
+            if os.path.exists(combined_wotmod_path):
+                self._install_pack(self.current_pack, combined_wotmod_path)
             
         except Exception as e:
             print('[SBRandomizer] ERROR in _on_battle_ended: {}'.format(e))
@@ -302,10 +326,19 @@ class SkyboxRandomizer:
             traceback.print_exc()
 
     def _delayed_pack_swap(self):
+        self.pending_swap_callback = None
+        
         try:
+            if self.in_battle:
+                print('[SBRandomizer] Skipping pack swap - already in battle')
+                return
+            
             combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
             if os.path.exists(combined_wotmod_path):
                 self._install_pack(self.current_pack, combined_wotmod_path)
+            else:
+                print('[SBRandomizer] ERROR: Combined archive not found')
+                
         except Exception as e:
             print('[SBRandomizer] ERROR in delayed pack swap: {}'.format(e))
             import traceback
@@ -314,7 +347,7 @@ class SkyboxRandomizer:
     def _on_account_ready(self):
         if not self.initialized:
             self._complete_initialization()
-            self._hook_avatar_destruction()
+            self._hook_avatar_events()
             print('[SBRandomizer] Ready!')
 
 print('[SBRandomizer] Loading...')
