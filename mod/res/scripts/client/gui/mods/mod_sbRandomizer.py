@@ -65,7 +65,6 @@ class SkyboxRandomizer:
         return None
     
     def _scan_available_packs(self):
-        """Scan the packs folder for individual .wotmod files."""
         try:
             if not os.path.exists(self.sky_packs_path):
                 print('[SBRandomizer] Packs folder not found: {}'.format(self.sky_packs_path))
