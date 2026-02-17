@@ -17,7 +17,6 @@ except Exception as e:
 class SkyboxRandomizer:
     def __init__(self):
         try:
-            self.combined_wotmod_name = 'sbRandomizer_AllPacks.7z'
             self.mods_path = None
             self.res_mods_path = None
             self.sky_packs_path = './mods/sbr_Packs/'
@@ -65,58 +64,25 @@ class SkyboxRandomizer:
         
         return None
     
-    def _generate_combined_archive(self):
+    def _scan_available_packs(self):
+        """Scan the packs folder for individual .wotmod files."""
         try:
             if not os.path.exists(self.sky_packs_path):
-                return False
-            
-            combined_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
-            
-            wotmod_files = []
+                print('[SBRandomizer] Packs folder not found: {}'.format(self.sky_packs_path))
+                return
+
+            self.available_packs = []
             for item in os.listdir(self.sky_packs_path):
-                if item.endswith('.wotmod') and item != self.combined_wotmod_name:
-                    wotmod_files.append(item)
-            
-            if not wotmod_files:
-                return False
-            
-            print('[SBRandomizer] Generating combined archive from {} packs...'.format(len(wotmod_files)))
-            
-            with zipfile.ZipFile(combined_path, 'w', zipfile.ZIP_DEFLATED) as out_zip:
-                for wotmod_file in wotmod_files:
-                    wotmod_path = os.path.join(self.sky_packs_path, wotmod_file)
-                    pack_name = os.path.splitext(wotmod_file)[0]
-                    
-                    try:
-                        with zipfile.ZipFile(wotmod_path, 'r') as in_zip:
-                            files_found = False
-                            for file_info in in_zip.filelist:
-                                if file_info.filename.endswith('/'):
-                                    continue
-                                
-                                new_path = os.path.join('packs', pack_name, file_info.filename)
-                                
-                                file_data = in_zip.read(file_info.filename)
-                                out_zip.writestr(new_path, file_data)
-                                files_found = True
-                            
-                            if not files_found:
-                                marker_path = 'packs/{}/empty.txt'.format(pack_name)
-                                out_zip.writestr(marker_path, 'This is an empty pack - uses default sky')
-                                print('[SBRandomizer] Pack "{}" is empty - will use default sky'.format(pack_name))
-                    
-                    except zipfile.BadZipFile:
-                        print('[SBRandomizer] WARNING: "{}" is not a valid zip file, skipping'.format(wotmod_file))
-                        continue
-            
-            print('[SBRandomizer] Combined archive created')
-            return True
-            
+                if item.endswith('.wotmod'):
+                    pack_name = os.path.splitext(item)[0]
+                    self.available_packs.append(pack_name)
+
+            self.available_packs.sort()
+            print('[SBRandomizer] Found {} pack(s): {}'.format(
+                len(self.available_packs), ', '.join(self.available_packs)))
+
         except Exception as e:
-            print('[SBRandomizer] ERROR generating combined archive: {}'.format(e))
-            import traceback
-            traceback.print_exc()
-            return False
+            print('[SBRandomizer] Error scanning packs: {}'.format(e))
     
     def _complete_initialization(self):
         if self.initialized:
@@ -134,23 +100,12 @@ class SkyboxRandomizer:
             if not os.path.exists(self.res_mods_path):
                 os.makedirs(self.res_mods_path)
             
-            combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
-            
-            if os.path.exists(combined_wotmod_path):
-                os.remove(combined_wotmod_path)
-            
-            if not self._generate_combined_archive():
-                return
-            
-            if os.path.exists(combined_wotmod_path):
-                self._scan_available_packs_in_wotmod(combined_wotmod_path)
-                
-                if self.available_packs:
-                    self.current_pack = random.choice(self.available_packs)
-                    self.pack_history.append(self.current_pack)
-                    print('[SBRandomizer] Available packs: {}'.format(', '.join(self.available_packs)))
-                    
-                    self._install_pack(self.current_pack, combined_wotmod_path)
+            self._scan_available_packs()
+
+            if self.available_packs:
+                self.current_pack = random.choice(self.available_packs)
+                self.pack_history.append(self.current_pack)
+                self._install_pack(self.current_pack)
             
             self.initialized = True
             
@@ -159,24 +114,16 @@ class SkyboxRandomizer:
             import traceback
             traceback.print_exc()
     
-    def _scan_available_packs_in_wotmod(self, wotmod_path):
+    def _get_wotmod_path(self, pack_name):
+        return os.path.join(self.sky_packs_path, '{}.wotmod'.format(pack_name))
+
+    def _install_pack(self, pack_name):
         try:
-            with zipfile.ZipFile(wotmod_path, 'r') as z:
-                all_paths = z.namelist()
-                pack_folders = set()
-                for path in all_paths:
-                    if path.startswith('packs/'):
-                        parts = path.split('/')
-                        if len(parts) >= 2:
-                            pack_folders.add(parts[1])
-                
-                self.available_packs = sorted(list(pack_folders))
-                    
-        except Exception as e:
-            print('[SBRandomizer] Error scanning wotmod: {}'.format(e))
-    
-    def _install_pack(self, pack_name, wotmod_path):
-        try:
+            wotmod_path = self._get_wotmod_path(pack_name)
+            if not os.path.exists(wotmod_path):
+                print('[SBRandomizer] ERROR: Pack file not found: {}'.format(wotmod_path))
+                return
+
             print('[SBRandomizer] Installing: {}'.format(pack_name))
             
             if self.installed_pack:
@@ -185,34 +132,42 @@ class SkyboxRandomizer:
             self.tracked_files = []
             
             with zipfile.ZipFile(wotmod_path, 'r') as z:
-                pack_prefix = 'packs/{}/res/'.format(pack_name)
+                res_prefix = 'res/'
                 files_installed = 0
                 
                 for zip_path in z.namelist():
-                    if zip_path.startswith(pack_prefix):
-                        rel_path = zip_path[len(pack_prefix):]
-                        
-                        if not rel_path or rel_path.endswith('/'):
-                            continue
-                        
-                        dest_path = os.path.join(self.res_mods_path, rel_path)
-                        dest_dir = os.path.dirname(dest_path)
-                        
-                        if not os.path.exists(dest_dir):
-                            os.makedirs(dest_dir)
-                        
-                        top_level = rel_path.split('/')[0]
-                        if top_level not in self.tracked_files:
-                            self.tracked_files.append(top_level)
-                        
-                        with z.open(zip_path) as src, open(dest_path, 'wb') as dst:
-                            shutil.copyfileobj(src, dst)
-                        
-                        files_installed += 1
+                    if not zip_path.startswith(res_prefix):
+                        continue
+
+                    rel_path = zip_path[len(res_prefix):]
+                    
+                    if not rel_path or rel_path.endswith('/'):
+                        continue
+                    
+                    dest_path = os.path.join(self.res_mods_path, rel_path)
+                    dest_dir = os.path.dirname(dest_path)
+                    
+                    if not os.path.exists(dest_dir):
+                        os.makedirs(dest_dir)
+                    
+                    top_level = rel_path.split('/')[0]
+                    if top_level not in self.tracked_files:
+                        self.tracked_files.append(top_level)
+                    
+                    with z.open(zip_path) as src, open(dest_path, 'wb') as dst:
+                        shutil.copyfileobj(src, dst)
+                    
+                    files_installed += 1
                 
+                if files_installed == 0:
+                    print('[SBRandomizer] Pack "{}" is empty - using default sky'.format(pack_name))
+                else:
+                    print('[SBRandomizer] Installed {} file(s) from pack: {}'.format(files_installed, pack_name))
+
                 self.installed_pack = pack_name
-                print('[SBRandomizer] Installed {} files from pack: {}'.format(files_installed, pack_name))
                 
+        except zipfile.BadZipFile:
+            print('[SBRandomizer] ERROR: "{}" is not a valid wotmod file'.format(pack_name))
         except Exception as e:
             print('[SBRandomizer] ERROR installing pack: {}'.format(e))
             import traceback
@@ -226,7 +181,6 @@ class SkyboxRandomizer:
             print('[SBRandomizer] Uninstalling: {}'.format(self.installed_pack))
             
             if os.path.exists(self.res_mods_path):
-                removed_count = 0
                 failed_removals = []
                 
                 for item in self.tracked_files:
@@ -237,17 +191,14 @@ class SkyboxRandomizer:
                     try:
                         if os.path.isdir(item_path):
                             shutil.rmtree(item_path)
-                            print('[SBRandomizer] Removed directory: {}'.format(item))
                         else:
                             os.remove(item_path)
-                            print('[SBRandomizer] Removed file: {}'.format(item))
-                        removed_count += 1
                     except Exception as e:
                         print('[SBRandomizer] ERROR: Could not remove {}: {}'.format(item, e))
                         failed_removals.append(item)
                 
                 if failed_removals:
-                    print('[SBRandomizer] WARNING: Failed to remove {} items: {}'.format(
+                    print('[SBRandomizer] WARNING: Failed to remove {} item(s): {}'.format(
                         len(failed_removals), ', '.join(failed_removals)))
             
             self.installed_pack = None
@@ -315,10 +266,7 @@ class SkyboxRandomizer:
                 self.pack_history.pop(0)
             
             print('[SBRandomizer] Next battle will use: {}'.format(self.current_pack))
-            
-            combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
-            if os.path.exists(combined_wotmod_path):
-                self._install_pack(self.current_pack, combined_wotmod_path)
+            self._install_pack(self.current_pack)
             
         except Exception as e:
             print('[SBRandomizer] ERROR in _on_battle_ended: {}'.format(e))
@@ -333,11 +281,7 @@ class SkyboxRandomizer:
                 print('[SBRandomizer] Skipping pack swap - already in battle')
                 return
             
-            combined_wotmod_path = os.path.join(self.sky_packs_path, self.combined_wotmod_name)
-            if os.path.exists(combined_wotmod_path):
-                self._install_pack(self.current_pack, combined_wotmod_path)
-            else:
-                print('[SBRandomizer] ERROR: Combined archive not found')
+            self._install_pack(self.current_pack)
                 
         except Exception as e:
             print('[SBRandomizer] ERROR in delayed pack swap: {}'.format(e))
