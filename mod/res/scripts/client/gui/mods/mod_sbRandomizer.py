@@ -28,6 +28,8 @@ class SkyboxRandomizer:
             self.initialized = False
             self.in_battle = False
             self.pending_swap_callback = None
+            self.waiting_for_hangar_gui = False
+            self.pack_to_install = None
             
             self._register_events()
             
@@ -211,6 +213,8 @@ class SkyboxRandomizer:
     def _register_events(self):
         try:
             g_playerEvents.onAccountBecomePlayer += self._on_account_ready
+            g_playerEvents.onAccountShowGUI += self._on_hangar_gui_ready
+            print('[SBRandomizer] Subscribed to player events')
         except Exception as e:
             print('[SBRandomizer] ERROR registering events: {}'.format(e))
     
@@ -233,11 +237,49 @@ class SkyboxRandomizer:
         except Exception as e:
             print('[SBRandomizer] ERROR hooking avatar events: {}'.format(e))
     
+    def _on_hangar_gui_ready(self, ctx):
+        try:
+            # Check if we're waiting to swap after a battle
+            if self.waiting_for_hangar_gui and self.pack_to_install and not self.in_battle:
+                print('[SBRandomizer] Hangar GUI ready event received')
+                self.waiting_for_hangar_gui = False
+                
+                # Wait 2 more seconds for full stabilization before swapping files
+                print('[SBRandomizer] Waiting 2 seconds for stabilization...')
+                BigWorld.callback(2.0, self._execute_pack_swap)
+                
+        except Exception as e:
+            print('[SBRandomizer] ERROR in _on_hangar_gui_ready: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+    
+    def _execute_pack_swap(self):
+        try:
+            if self.in_battle or not self.pack_to_install:
+                print('[SBRandomizer] Skipping pack swap - in_battle={}, pack={}'.format(
+                    self.in_battle, self.pack_to_install))
+                return
+            
+            print('[SBRandomizer] Executing pack swap for: {}'.format(self.pack_to_install))
+            self._install_pack(self.pack_to_install)
+            self.pack_to_install = None
+            print('[SBRandomizer] Pack swap complete, ready for next battle')
+            
+        except Exception as e:
+            print('[SBRandomizer] ERROR in _execute_pack_swap: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+    
     def _on_battle_started(self):
         self.in_battle = True
         
-        if self.pending_swap_callback is not None:
+        # Cancel any pending pack swap operations
+        if self.waiting_for_hangar_gui:
             print('[SBRandomizer] Battle started - cancelling pending pack swap')
+            self.waiting_for_hangar_gui = False
+            self.pack_to_install = None
+        
+        if self.pending_swap_callback is not None:
             try:
                 BigWorld.cancelCallback(self.pending_swap_callback)
             except:
@@ -265,25 +307,14 @@ class SkyboxRandomizer:
                 self.pack_history.pop(0)
             
             print('[SBRandomizer] Next battle will use: {}'.format(self.current_pack))
-            self._install_pack(self.current_pack)
+            
+            # Set flag to wait for hangar GUI ready event
+            self.waiting_for_hangar_gui = True
+            self.pack_to_install = self.current_pack
+            print('[SBRandomizer] Waiting for hangar GUI ready event...')
             
         except Exception as e:
             print('[SBRandomizer] ERROR in _on_battle_ended: {}'.format(e))
-            import traceback
-            traceback.print_exc()
-
-    def _delayed_pack_swap(self):
-        self.pending_swap_callback = None
-        
-        try:
-            if self.in_battle:
-                print('[SBRandomizer] Skipping pack swap - already in battle')
-                return
-            
-            self._install_pack(self.current_pack)
-                
-        except Exception as e:
-            print('[SBRandomizer] ERROR in delayed pack swap: {}'.format(e))
             import traceback
             traceback.print_exc()
     
