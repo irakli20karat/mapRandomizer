@@ -104,6 +104,7 @@ class SkyboxRandomizer:
             self._scan_available_packs()
 
             if self.available_packs:
+                
                 self.current_pack = random.choice(self.available_packs)
                 self.pack_history.append(self.current_pack)
                 self._install_pack(self.current_pack)
@@ -127,8 +128,7 @@ class SkyboxRandomizer:
 
             print('[SBRandomizer] Installing: {}'.format(pack_name))
             
-            if self.installed_pack:
-                self._uninstall_pack()
+            self._uninstall_pack()
             
             self.tracked_files = []
             
@@ -176,39 +176,26 @@ class SkyboxRandomizer:
     
     def _uninstall_pack(self):
         try:
-            if not self.installed_pack:
+            if not os.path.exists(self.res_mods_path):
                 return
             
-            print('[SBRandomizer] Uninstalling: {}'.format(self.installed_pack))
+            print('[SBRandomizer] Cleaning res_mods...')
             
-            if os.path.exists(self.res_mods_path):
-                failed_removals = []
-                
-                for item in self.tracked_files:
-                    item_path = os.path.join(self.res_mods_path, item)
-                    if not os.path.exists(item_path):
-                        continue
-                    
-                    try:
-                        if os.path.isdir(item_path):
-                            shutil.rmtree(item_path)
-                        else:
-                            os.remove(item_path)
-                    except Exception as e:
-                        print('[SBRandomizer] ERROR: Could not remove {}: {}'.format(item, e))
-                        failed_removals.append(item)
-                
-                if failed_removals:
-                    print('[SBRandomizer] WARNING: Failed to remove {} item(s): {}'.format(
-                        len(failed_removals), ', '.join(failed_removals)))
+            for item in os.listdir(self.res_mods_path):
+                item_path = os.path.join(self.res_mods_path, item)
+                try:
+                    if os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                    else:
+                        os.remove(item_path)
+                except Exception as e:
+                    print('[SBRandomizer] Could not remove {}: {}'.format(item, e))
             
             self.installed_pack = None
-            self.tracked_files = []
+            self.tracked_files = []  # Till later bud
             
         except Exception as e:
-            print('[SBRandomizer] ERROR uninstalling pack: {}'.format(e))
-            import traceback
-            traceback.print_exc()
+            print('[SBRandomizer] ERROR cleaning res_mods: {}'.format(e))
     
     def _register_events(self):
         try:
