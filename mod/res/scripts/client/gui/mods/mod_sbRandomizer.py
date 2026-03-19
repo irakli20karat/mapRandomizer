@@ -3,6 +3,7 @@ import random
 import zipfile
 import shutil
 import BigWorld
+from gui.modsSettingsApi import g_modsSettingsApi, templates
 
 try:
     from PlayerEvents import g_playerEvents
@@ -13,6 +14,10 @@ try:
     from Avatar import PlayerAvatar
 except Exception as e:
     print('[SBRandomizer] ERROR importing Avatar: {}'.format(e))
+
+# ModSettingsAPI configuration
+MOD_LINKAGE = 'skybox_randomizer'
+MOD_DATA_VERSION = 1
 
 class SkyboxRandomizer:
     def __init__(self):
@@ -30,6 +35,9 @@ class SkyboxRandomizer:
             self.pending_swap_callback = None
             self.waiting_for_hangar_gui = False
             self.pack_to_install = None
+            
+            # Settings storage
+            self.settings = {}
             
             self._register_events()
             
@@ -85,6 +93,152 @@ class SkyboxRandomizer:
         except Exception as e:
             print('[SBRandomizer] Error scanning packs: {}'.format(e))
     
+    def _build_settings_template(self):
+        """Build ModSettingsAPI template dynamically based on discovered packs"""
+        try:
+            column1 = []
+            column2 = []
+            
+            # Split packs between two columns for better UI
+            half = (len(self.available_packs) + 1) // 2
+            
+            for idx, pack in enumerate(self.available_packs):
+                # Sanitize pack name for varName (no spaces, special chars)
+                safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
+                
+                # Checkbox to enable/disable pack
+                checkbox = templates.createCheckbox(
+                    pack,                              # text
+                    'enable_{}'.format(safe_name),     # varName
+                    True,                              # value
+                    tooltip='{{HEADER}}Enable/Disable Pack{{/HEADER}}{{BODY}}Toggle whether "{}" can be selected for battles{{/BODY}}'.format(pack)
+                )
+                
+                # Slider for weight (0.1 to 5.0)
+                slider = templates.createSlider(
+                    '  Weight',                        # text
+                    'weight_{}'.format(safe_name),     # varName
+                    1.0,                                # value
+                    0.1,                                # minimum
+                    5.0,                                # maximum
+                    0.1                                 # snapInterval
+                )
+                
+                # Add to appropriate column
+                if idx < half:
+                    column1.append(checkbox)
+                    column1.append(slider)
+                else:
+                    column2.append(checkbox)
+                    column2.append(slider)
+            
+            # Build template
+            template = {
+                'modDisplayName': 'Skybox Randomizer',
+                'enabled': True,
+                'column1': column1,
+                'column2': column2
+            }
+            
+            return template
+            
+        except Exception as e:
+            print('[SBRandomizer] Error building template: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _build_default_settings(self):
+        """Build default settings dict for all packs"""
+        settings = {'enabled': True}
+        
+        for pack in self.available_packs:
+            safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
+            settings['enable_{}'.format(safe_name)] = True
+            settings['weight_{}'.format(safe_name)] = 1.0
+        
+        return settings
+    
+    def _register_modsettings(self):
+        """Register mod with ModSettingsAPI"""
+        try:
+            if not self.available_packs:
+                print('[SBRandomizer] No packs found, skipping ModSettingsAPI registration')
+                return
+            
+            template = self._build_settings_template()
+            if not template:
+                print('[SBRandomizer] Failed to build settings template')
+                return
+            
+            # Try to load saved settings
+            savedSettings = g_modsSettingsApi.getModSettings(MOD_LINKAGE, template)
+            
+            if savedSettings:
+                self.settings = savedSettings
+                print('[SBRandomizer] Loaded saved settings from ModSettingsAPI')
+                g_modsSettingsApi.registerCallback(MOD_LINKAGE, self._on_settings_changed, None)
+            else:
+                # First time - create default settings
+                self.settings = self._build_default_settings()
+                g_modsSettingsApi.setModTemplate(MOD_LINKAGE, template, self._on_settings_changed, None)
+                print('[SBRandomizer] Registered new mod template with ModSettingsAPI')
+            
+        except Exception as e:
+            print('[SBRandomizer] Error registering ModSettingsAPI: {}'.format(e))
+            import traceback
+            traceback.print_exc()
+    
+    def _on_settings_changed(self, linkage, newSettings):
+        """Callback when user changes settings in the menu"""
+        if linkage == MOD_LINKAGE:
+            try:
+                print('[SBRandomizer] Settings changed: {}'.format(newSettings))
+                self.settings = newSettings
+            except Exception as e:
+                print('[SBRandomizer] Error in settings callback: {}'.format(e))
+    
+    def _get_enabled_packs(self):
+        """Get list of enabled packs from settings"""
+        enabled = []
+        for pack in self.available_packs:
+            safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
+            if self.settings.get('enable_{}'.format(safe_name), True):
+                enabled.append(pack)
+        return enabled
+    
+    def _get_pack_weight(self, pack):
+        """Get weight for a specific pack"""
+        safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
+        return self.settings.get('weight_{}'.format(safe_name), 1.0)
+    
+    def _select_weighted_pack(self, pack_list=None):
+        """Select a pack using weighted random selection"""
+        if pack_list is None:
+            pack_list = self._get_enabled_packs()
+        
+        if not pack_list:
+            print('[SBRandomizer] No enabled packs available!')
+            return None
+        
+        weights = []
+        for pack in pack_list:
+            weight = self._get_pack_weight(pack)
+            weights.append(max(0.1, weight))
+        
+        total_weight = sum(weights)
+        if total_weight <= 0:
+            return random.choice(pack_list)
+        
+        rand_val = random.uniform(0, total_weight)
+        cumulative = 0
+        for pack, weight in zip(pack_list, weights):
+            cumulative += weight
+            if rand_val <= cumulative:
+                return pack
+        
+        return pack_list[-1]
+    
     def _complete_initialization(self):
         if self.initialized:
             return
@@ -102,12 +256,18 @@ class SkyboxRandomizer:
                 os.makedirs(self.res_mods_path)
             
             self._scan_available_packs()
+            
+            # Register with ModSettingsAPI
+            self._register_modsettings()
 
             if self.available_packs:
-                
-                self.current_pack = random.choice(self.available_packs)
-                self.pack_history.append(self.current_pack)
-                self._install_pack(self.current_pack)
+                enabled_packs = self._get_enabled_packs()
+                if enabled_packs:
+                    self.current_pack = self._select_weighted_pack(enabled_packs)
+                    self.pack_history.append(self.current_pack)
+                    self._install_pack(self.current_pack)
+                else:
+                    print('[SBRandomizer] WARNING: No packs enabled in settings!')
             
             self.initialized = True
             
@@ -192,7 +352,7 @@ class SkyboxRandomizer:
                     print('[SBRandomizer] Could not remove {}: {}'.format(item, e))
             
             self.installed_pack = None
-            self.tracked_files = []  # Till later bud
+            self.tracked_files = []
             
         except Exception as e:
             print('[SBRandomizer] ERROR cleaning res_mods: {}'.format(e))
@@ -226,12 +386,10 @@ class SkyboxRandomizer:
     
     def _on_hangar_gui_ready(self, ctx):
         try:
-            # Check if we're waiting to swap after a battle
             if self.waiting_for_hangar_gui and self.pack_to_install and not self.in_battle:
                 print('[SBRandomizer] Hangar GUI ready event received')
                 self.waiting_for_hangar_gui = False
                 
-                # Wait 2 more seconds for full stabilization before swapping files
                 print('[SBRandomizer] Waiting 2 seconds for stabilization...')
                 BigWorld.callback(2.0, self._execute_pack_swap)
                 
@@ -260,7 +418,6 @@ class SkyboxRandomizer:
     def _on_battle_started(self):
         self.in_battle = True
         
-        # Cancel any pending pack swap operations
         if self.waiting_for_hangar_gui:
             print('[SBRandomizer] Battle started - cancelling pending pack swap')
             self.waiting_for_hangar_gui = False
@@ -276,26 +433,26 @@ class SkyboxRandomizer:
     def _on_battle_ended(self):
         self.in_battle = False
         
-        if not self.initialized or not self.available_packs:
+        if not self.initialized:
             return
         
         try:
-            if len(self.pack_history) >= 2 and self.pack_history[-1] == self.pack_history[-2]:
-                available_choices = [p for p in self.available_packs if p != self.pack_history[-1]]
-                if available_choices:
-                    self.current_pack = random.choice(available_choices)
-                else:
-                    self.current_pack = random.choice(self.available_packs)
-            else:
-                self.current_pack = random.choice(self.available_packs)
+            enabled_packs = self._get_enabled_packs()
+            
+            if not enabled_packs:
+                print('[SBRandomizer] No enabled packs - skipping selection')
+                return
+            
+            self.current_pack = self._select_weighted_pack(enabled_packs)
             
             self.pack_history.append(self.current_pack)
             if len(self.pack_history) > 10:
                 self.pack_history.pop(0)
             
-            print('[SBRandomizer] Next battle will use: {}'.format(self.current_pack))
+            weight = self._get_pack_weight(self.current_pack)
+            print('[SBRandomizer] Next battle will use: {} (weight: {:.1f}x)'.format(
+                self.current_pack, weight))
             
-            # Set flag to wait for hangar GUI ready event
             self.waiting_for_hangar_gui = True
             self.pack_to_install = self.current_pack
             print('[SBRandomizer] Waiting for hangar GUI ready event...')
