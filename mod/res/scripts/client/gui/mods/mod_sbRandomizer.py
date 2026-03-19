@@ -80,14 +80,20 @@ class SkyboxRandomizer:
                 print('[SBRandomizer] Packs folder not found: {}'.format(self.sky_packs_path))
                 return
 
-            self.available_packs = []
+            # Add "Default" as the first option (vanilla lighting)
+            self.available_packs = ['Default']
+            
             for item in os.listdir(self.sky_packs_path):
                 if item.endswith('.wotmod'):
                     pack_name = os.path.splitext(item)[0]
                     self.available_packs.append(pack_name)
 
-            self.available_packs.sort()
-            print('[SBRandomizer] Found {} pack(s): {}'.format(
+            # Sort packs (except Default which stays first)
+            packs_without_default = self.available_packs[1:]
+            packs_without_default.sort()
+            self.available_packs = ['Default'] + packs_without_default
+            
+            print('[SBRandomizer] Found {} pack(s) (including Default): {}'.format(
                 len(self.available_packs), ', '.join(self.available_packs)))
 
         except Exception as e:
@@ -99,40 +105,50 @@ class SkyboxRandomizer:
             column1 = []
             column2 = []
             
-            # Split packs between two columns for better UI
-            half = (len(self.available_packs) + 1) // 2
+            # === COLUMN 1: Manual Controls ===
+            pack_labels = [pack for pack in self.available_packs]
+            dropdown = templates.createDropdown(
+                'Manual Pack Selection',
+                'manual_pack',
+                pack_labels,
+                0,
+                tooltip='{HEADER}Manual Pack Selection{/HEADER}{BODY}Choose a specific pack to use when locked{/BODY}'
+            )
+            column1.append(dropdown)
             
-            for idx, pack in enumerate(self.available_packs):
-                # Sanitize pack name for varName (no spaces, special chars)
+            lock_checkbox = templates.createCheckbox(
+                'Lock Selection (Disable Randomization)',
+                'lock_selection',
+                False,
+                tooltip='{HEADER}Lock Selection{/HEADER}{BODY}When enabled, always use the manually selected pack instead of randomizing{/BODY}'
+            )
+            column1.append(lock_checkbox)
+            
+            # === COLUMN 2: All Pack Controls ===
+            for pack in self.available_packs:
                 safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
                 
-                # Checkbox to enable/disable pack
+                # Default should be disabled by default
+                default_enabled = False if pack == 'Default' else True
+                
                 checkbox = templates.createCheckbox(
-                    pack,                              # text
-                    'enable_{}'.format(safe_name),     # varName
-                    True,                              # value
-                    tooltip='{{HEADER}}Enable/Disable Pack{{/HEADER}}{{BODY}}Toggle whether "{}" can be selected for battles{{/BODY}}'.format(pack)
+                    pack,
+                    'enable_{}'.format(safe_name),
+                    default_enabled,
+                    tooltip='{{HEADER}}Enable/Disable Pack{{/HEADER}}{{BODY}}Toggle whether "{}" can be randomly selected{{/BODY}}'.format(pack)
                 )
+                column2.append(checkbox)
                 
-                # Slider for weight (0.1 to 5.0)
                 slider = templates.createSlider(
-                    '  Weight',                        # text
-                    'weight_{}'.format(safe_name),     # varName
-                    1.0,                                # value
-                    0.1,                                # minimum
-                    5.0,                                # maximum
-                    0.1                                 # snapInterval
+                    '  Weight',
+                    'weight_{}'.format(safe_name),
+                    1.0,
+                    0.1,
+                    5.0,
+                    0.1
                 )
-                
-                # Add to appropriate column
-                if idx < half:
-                    column1.append(checkbox)
-                    column1.append(slider)
-                else:
-                    column2.append(checkbox)
-                    column2.append(slider)
+                column2.append(slider)
             
-            # Build template
             template = {
                 'modDisplayName': 'Skybox Randomizer',
                 'enabled': True,
@@ -150,11 +166,17 @@ class SkyboxRandomizer:
     
     def _build_default_settings(self):
         """Build default settings dict for all packs"""
-        settings = {'enabled': True}
+        settings = {
+            'enabled': True,
+            'manual_pack': 0,  # Index 0 = Default
+            'lock_selection': False,
+            'separator_1': False
+        }
         
         for pack in self.available_packs:
             safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
-            settings['enable_{}'.format(safe_name)] = True
+            # Default is disabled by default in random selection
+            settings['enable_{}'.format(safe_name)] = False if pack == 'Default' else True
             settings['weight_{}'.format(safe_name)] = 1.0
         
         return settings
@@ -171,7 +193,6 @@ class SkyboxRandomizer:
                 print('[SBRandomizer] Failed to build settings template')
                 return
             
-            # Try to load saved settings
             savedSettings = g_modsSettingsApi.getModSettings(MOD_LINKAGE, template)
             
             if savedSettings:
@@ -179,7 +200,6 @@ class SkyboxRandomizer:
                 print('[SBRandomizer] Loaded saved settings from ModSettingsAPI')
                 g_modsSettingsApi.registerCallback(MOD_LINKAGE, self._on_settings_changed, None)
             else:
-                # First time - create default settings
                 self.settings = self._build_default_settings()
                 g_modsSettingsApi.setModTemplate(MOD_LINKAGE, template, self._on_settings_changed, None)
                 print('[SBRandomizer] Registered new mod template with ModSettingsAPI')
@@ -211,6 +231,17 @@ class SkyboxRandomizer:
         """Get weight for a specific pack"""
         safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
         return self.settings.get('weight_{}'.format(safe_name), 1.0)
+    
+    def _get_manual_pack(self):
+        """Get the manually selected pack from dropdown"""
+        pack_index = self.settings.get('manual_pack', 0)
+        if 0 <= pack_index < len(self.available_packs):
+            return self.available_packs[pack_index]
+        return 'Default'
+    
+    def _is_selection_locked(self):
+        """Check if selection is locked (manual mode)"""
+        return self.settings.get('lock_selection', False)
     
     def _select_weighted_pack(self, pack_list=None):
         """Select a pack using weighted random selection"""
@@ -256,18 +287,23 @@ class SkyboxRandomizer:
                 os.makedirs(self.res_mods_path)
             
             self._scan_available_packs()
-            
-            # Register with ModSettingsAPI
             self._register_modsettings()
 
             if self.available_packs:
-                enabled_packs = self._get_enabled_packs()
-                if enabled_packs:
-                    self.current_pack = self._select_weighted_pack(enabled_packs)
-                    self.pack_history.append(self.current_pack)
-                    self._install_pack(self.current_pack)
+                # Check if selection is locked
+                if self._is_selection_locked():
+                    self.current_pack = self._get_manual_pack()
+                    print('[SBRandomizer] Selection locked - using manual pack: {}'.format(self.current_pack))
                 else:
-                    print('[SBRandomizer] WARNING: No packs enabled in settings!')
+                    enabled_packs = self._get_enabled_packs()
+                    if enabled_packs:
+                        self.current_pack = self._select_weighted_pack(enabled_packs)
+                    else:
+                        print('[SBRandomizer] WARNING: No packs enabled - using Default')
+                        self.current_pack = 'Default'
+                
+                self.pack_history.append(self.current_pack)
+                self._install_pack(self.current_pack)
             
             self.initialized = True
             
@@ -281,6 +317,14 @@ class SkyboxRandomizer:
 
     def _install_pack(self, pack_name):
         try:
+            # Handle "Default" (vanilla lighting) - just uninstall current pack
+            if pack_name == 'Default':
+                print('[SBRandomizer] Installing: Default (vanilla lighting)')
+                self._uninstall_pack()
+                self.installed_pack = 'Default'
+                print('[SBRandomizer] Default lighting active')
+                return
+            
             wotmod_path = self._get_wotmod_path(pack_name)
             if not os.path.exists(wotmod_path):
                 print('[SBRandomizer] ERROR: Pack file not found: {}'.format(wotmod_path))
@@ -437,21 +481,26 @@ class SkyboxRandomizer:
             return
         
         try:
-            enabled_packs = self._get_enabled_packs()
-            
-            if not enabled_packs:
-                print('[SBRandomizer] No enabled packs - skipping selection')
-                return
-            
-            self.current_pack = self._select_weighted_pack(enabled_packs)
+            # Check if selection is locked (manual mode)
+            if self._is_selection_locked():
+                self.current_pack = self._get_manual_pack()
+                print('[SBRandomizer] Selection locked - using manual pack: {}'.format(self.current_pack))
+            else:
+                # Random selection mode
+                enabled_packs = self._get_enabled_packs()
+                
+                if not enabled_packs:
+                    print('[SBRandomizer] No enabled packs - using Default')
+                    self.current_pack = 'Default'
+                else:
+                    self.current_pack = self._select_weighted_pack(enabled_packs)
+                    weight = self._get_pack_weight(self.current_pack)
+                    print('[SBRandomizer] Next battle will use: {} (weight: {:.1f}x)'.format(
+                        self.current_pack, weight))
             
             self.pack_history.append(self.current_pack)
             if len(self.pack_history) > 10:
                 self.pack_history.pop(0)
-            
-            weight = self._get_pack_weight(self.current_pack)
-            print('[SBRandomizer] Next battle will use: {} (weight: {:.1f}x)'.format(
-                self.current_pack, weight))
             
             self.waiting_for_hangar_gui = True
             self.pack_to_install = self.current_pack
