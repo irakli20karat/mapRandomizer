@@ -154,7 +154,7 @@ REM Create temporary packaging structure
 set TEMP_PACKAGE=temp_package
 if exist "%TEMP_PACKAGE%" rmdir /s /q "%TEMP_PACKAGE%" 2>nul
 mkdir "%TEMP_PACKAGE%\mods\[current_version]" 2>nul
-mkdir "%TEMP_PACKAGE%\mods\sbr_Packs" 2>nul
+mkdir "%TEMP_PACKAGE%\mods\configs\sbr_Packs" 2>nul
 
 REM Copy main .wotmod to versioned folder
 echo Copying %OUTPUT_NAME% to mods/[current_version]/...
@@ -167,8 +167,8 @@ if errorlevel 1 (
 
 REM Copy default packs if folder exists
 if exist "%PACKS_FOLDER%" (
-    echo Copying packs from '%PACKS_FOLDER%' folder to mods/sbr_Packs/...
-    xcopy "%PACKS_FOLDER%\*.wotmod" "%TEMP_PACKAGE%\mods\sbr_Packs\" /Y /Q
+    echo Copying packs from '%PACKS_FOLDER%' folder to mods/configs/sbr_Packs/...
+    xcopy "%PACKS_FOLDER%\*.wotmod" "%TEMP_PACKAGE%\mods\configs\sbr_Packs\" /Y /Q
     if errorlevel 1 (
         echo WARNING: No .wotmod files found in '%PACKS_FOLDER%' folder
     ) else (
@@ -202,7 +202,7 @@ echo RELEASE PACKAGE CREATED!
 echo ========================================
 echo Main mod: %FINAL_ZIP%\mods\[current_version]\%OUTPUT_NAME%
 if exist "%PACKS_FOLDER%" (
-    echo Packs: %FINAL_ZIP%\mods\sbr_Packs\
+    echo Packs: %FINAL_ZIP%\mods\configs\sbr_Packs\
 )
 echo.
 echo File: %CD%\%FINAL_ZIP%

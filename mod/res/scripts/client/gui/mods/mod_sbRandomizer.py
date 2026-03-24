@@ -23,7 +23,8 @@ class SkyboxRandomizer:
         try:
             self.mods_path = None
             self.res_mods_path = None
-            self.sky_packs_path = './mods/sbr_Packs/'
+            self.sky_packs_path = './mods/configs/sbr_Packs/'
+            self.manifest_path = './mods/configs/sbr_Packs/.sbr_manifest.json'
             self.available_packs = []
             self.current_pack = None
             self.installed_pack = None
@@ -160,7 +161,7 @@ class SkyboxRandomizer:
         
         for pack in self.available_packs:
             safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
-            settings['enable_{}'.format(safe_name)] = False if pack == 'Default' else True
+            settings['enable_{}'.format(safe_name)] = pack != 'Default'
             settings['weight_{}'.format(safe_name)] = 1.0
         
         return settings
@@ -257,6 +258,9 @@ class SkyboxRandomizer:
             if not os.path.exists(self.res_mods_path):
                 os.makedirs(self.res_mods_path)
             
+            # Clean only our tracked files from previous session (preserves other mods)
+            self._cleanup_from_manifest()
+            
             self._scan_available_packs()
             self._register_modsettings()
 
@@ -288,6 +292,7 @@ class SkyboxRandomizer:
             if pack_name == 'Default':
                 self._uninstall_pack()
                 self.installed_pack = 'Default'
+                self._save_manifest()
                 return
             
             wotmod_path = self._get_wotmod_path(pack_name)
@@ -326,6 +331,7 @@ class SkyboxRandomizer:
                     files_installed += 1
 
                 self.installed_pack = pack_name
+                self._save_manifest()
                 
         except zipfile.BadZipFile:
             print('[SBRandomizer] ERROR: "{}" is not a valid wotmod file'.format(pack_name))
@@ -334,10 +340,84 @@ class SkyboxRandomizer:
             import traceback
             traceback.print_exc()
     
-    def _uninstall_pack(self):
+    def _save_manifest(self):
+        """Save the current tracked files to a manifest file for persistence between sessions"""
+        try:
+            import json
+            manifest_data = {
+                'version': self._get_game_version(),
+                'tracked_files': self.tracked_files,
+                'installed_pack': self.installed_pack
+            }
+            
+            with open(self.manifest_path, 'w') as f:
+                json.dump(manifest_data, f, indent=2)
+                
+        except Exception as e:
+            print('[SBRandomizer] Error saving manifest: {}'.format(e))
+    
+    def _load_manifest(self):
+        """Load tracked files from previous session's manifest"""
+        try:
+            import json
+            if not os.path.exists(self.manifest_path):
+                return None
+            
+            with open(self.manifest_path, 'r') as f:
+                manifest_data = json.load(f)
+            
+            # Only use manifest if it's for the same game version
+            current_version = self._get_game_version()
+            if manifest_data.get('version') == current_version:
+                return manifest_data
+            else:
+                print('[SBRandomizer] Manifest is for different game version, ignoring')
+                return None
+                
+        except Exception as e:
+            print('[SBRandomizer] Error loading manifest: {}'.format(e))
+            return None
+    
+    def _cleanup_from_manifest(self):
+        """Clean up files from a previous session using the saved manifest"""
+        try:
+            manifest = self._load_manifest()
+            if not manifest or not manifest.get('tracked_files'):
+                print('[SBRandomizer] No manifest found or no tracked files to clean')
+                return
+            
+            if not os.path.exists(self.res_mods_path):
+                return
+            
+            print('[SBRandomizer] Cleaning up {} items from previous session...'.format(
+                len(manifest['tracked_files'])))
+            
+            for item in manifest['tracked_files']:
+                item_path = os.path.join(self.res_mods_path, item)
+                if not os.path.exists(item_path):
+                    continue
+                    
+                try:
+                    if os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                    else:
+                        os.remove(item_path)
+                    print('[SBRandomizer] Removed: {}'.format(item))
+                except Exception as e:
+                    print('[SBRandomizer] Could not remove {}: {}'.format(item, e))
+            
+            print('[SBRandomizer] Cleanup from manifest complete')
+            
+        except Exception as e:
+            print('[SBRandomizer] ERROR during manifest cleanup: {}'.format(e))
+    
+    def _cleanup_res_mods_full(self):
+        """Perform a full cleanup of res_mods directory on startup to remove any leftover packs"""
         try:
             if not os.path.exists(self.res_mods_path):
                 return
+            
+            print('[SBRandomizer] Performing startup cleanup of res_mods...')
             
             for item in os.listdir(self.res_mods_path):
                 item_path = os.path.join(self.res_mods_path, item)
@@ -349,8 +429,33 @@ class SkyboxRandomizer:
                 except Exception as e:
                     print('[SBRandomizer] Could not remove {}: {}'.format(item, e))
             
+            print('[SBRandomizer] Startup cleanup complete')
+            
+        except Exception as e:
+            print('[SBRandomizer] ERROR during startup cleanup: {}'.format(e))
+    
+    def _uninstall_pack(self):
+        try:
+            if not os.path.exists(self.res_mods_path):
+                return
+            
+            # Only remove tracked files/directories installed by this mod
+            for item in self.tracked_files:
+                item_path = os.path.join(self.res_mods_path, item)
+                if not os.path.exists(item_path):
+                    continue
+                    
+                try:
+                    if os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                    else:
+                        os.remove(item_path)
+                except Exception as e:
+                    print('[SBRandomizer] Could not remove {}: {}'.format(item, e))
+            
             self.installed_pack = None
             self.tracked_files = []
+            self._save_manifest()
             
         except Exception as e:
             print('[SBRandomizer] ERROR cleaning res_mods: {}'.format(e))
