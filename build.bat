@@ -12,6 +12,7 @@ set MOD_FOLDER=mod
 set BUILD_FOLDER=build
 set OUTPUT_NAME=sbRandomizer.wotmod
 set PACKS_FOLDER=default
+set LANGS_FOLDER=langs
 set FINAL_ZIP=sbRandomizer_release.zip
 
 REM Check mod folder
@@ -177,6 +178,21 @@ if exist "%PACKS_FOLDER%" (
 ) else (
     echo WARNING: '%PACKS_FOLDER%' folder not found - skipping packs
     echo Create a '%PACKS_FOLDER%' folder with .wotmod files to include them
+)
+echo.
+
+REM Copy language files
+if exist "%LANGS_FOLDER%" (
+    echo Copying language files from '%LANGS_FOLDER%' to mods/configs/sbr_Packs/res/text/...
+    mkdir "%TEMP_PACKAGE%\mods\configs\sbr_Packs\res\text" 2>nul
+    xcopy "%LANGS_FOLDER%\*.json" "%TEMP_PACKAGE%\mods\configs\sbr_Packs\res\text\" /Y /Q
+    if errorlevel 1 (
+        echo WARNING: No .json files found in '%LANGS_FOLDER%' folder
+    ) else (
+        echo Language files copied successfully.
+    )
+) else (
+    echo WARNING: '%LANGS_FOLDER%' folder not found - skipping translations
 )
 echo.
 

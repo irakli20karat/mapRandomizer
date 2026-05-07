@@ -1,0 +1,9 @@
+{
+    "manual_pack_label": "Manual Pack Selection",
+    "manual_pack_tooltip": "{HEADER}Manual Pack Selection{/HEADER}{BODY}Choose a specific pack to use when locked{/BODY}",
+    "lock_label": "Lock Selection (Disable Randomization)",
+    "lock_tooltip": "{HEADER}Lock Selection{/HEADER}{BODY}When enabled, always use the manually selected pack instead of randomizing{/BODY}",
+    "pack_enable_header": "Enable/Disable Pack",
+    "pack_enable_body": "Toggle whether \"{name}\" can be randomly selected",
+    "weight_label": "Weight"
+}
