@@ -408,8 +408,9 @@ class SkyboxRandomizer:
 
     def _install_pack(self, pack_name):
         try:
+            self._uninstall_pack()  # clean previous pack first
+
             if pack_name == 'Default':
-                self._uninstall_pack()
                 self.installed_pack = 'Default'
                 self._save_manifest()
                 return
@@ -418,29 +419,23 @@ class SkyboxRandomizer:
             if not os.path.exists(wotmod_path):
                 return
 
-            self._uninstall_pack()
             self.tracked_files = []
-
             with zipfile.ZipFile(wotmod_path, 'r') as z:
                 res_prefix = 'res/'
                 for zip_path in z.namelist():
-                    if not zip_path.startswith(res_prefix):
+                    if not zip_path.startswith(res_prefix) or zip_path.endswith('/'):
                         continue
                     rel_path = zip_path[len(res_prefix):]
-                    if not rel_path or rel_path.endswith('/'):
-                        continue
                     dest_path = os.path.join(self.res_mods_path, rel_path)
                     dest_dir = os.path.dirname(dest_path)
                     if not os.path.exists(dest_dir):
                         os.makedirs(dest_dir)
-                    top_level = rel_path.split('/')[0]
-                    if top_level not in self.tracked_files:
-                        self.tracked_files.append(top_level)
                     with z.open(zip_path) as src, open(dest_path, 'wb') as dst:
                         shutil.copyfileobj(src, dst)
+                    self.tracked_files.append(rel_path)
 
-                self.installed_pack = pack_name
-                self._save_manifest()
+            self.installed_pack = pack_name
+            self._save_manifest()
 
         except zipfile.BadZipFile:
             print('[SBRandomizer] ERROR: "{}" is not a valid wotmod file'.format(pack_name))
@@ -451,24 +446,18 @@ class SkyboxRandomizer:
 
     def _uninstall_pack(self):
         try:
-            if not os.path.exists(self.res_mods_path):
-                return
-            for item in self.tracked_files:
-                item_path = os.path.join(self.res_mods_path, item)
-                if not os.path.exists(item_path):
-                    continue
+            for rel_path in self.tracked_files:
+                dest_path = os.path.join(self.res_mods_path, rel_path)
                 try:
-                    if os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
-                    else:
-                        os.remove(item_path)
+                    if os.path.exists(dest_path):
+                        os.remove(dest_path)
                 except Exception as e:
-                    print('[SBRandomizer] Could not remove {}: {}'.format(item, e))
+                    print('[SBRandomizer] Could not remove {}: {}'.format(rel_path, e))
             self.installed_pack = None
             self.tracked_files = []
             self._save_manifest()
         except Exception as e:
-            print('[SBRandomizer] ERROR cleaning res_mods: {}'.format(e))
+            print('[SBRandomizer] ERROR in _uninstall_pack: {}'.format(e))
 
     # ------------------------------------------------------------------ #
     #  Manifest
