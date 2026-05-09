@@ -5,5 +5,9 @@
     "lock_tooltip": "{HEADER}Lock Selection{/HEADER}{BODY}When enabled, always use the manually selected pack instead of randomizing{/BODY}",
     "pack_enable_header": "Enable/Disable Pack",
     "pack_enable_body": "Toggle whether \"{name}\" can be randomly selected",
-    "weight_label": "Weight"
+    "weight_label": "Weight",
+    "hour_from_label": "Active From (hour)",
+    "hour_from_tooltip": "{HEADER}Active From{/HEADER}{BODY}Start hour (0–23) when \"{name}\" becomes eligible.{/BODY}",
+    "hour_to_label": "Active To (hour)",
+    "hour_to_tooltip": "{HEADER}Active To{/HEADER}{BODY}End hour (0–23) when \"{name}\" stops being eligible.{/BODY}"
 }

@@ -19,10 +19,6 @@ except Exception as e:
 MOD_LINKAGE = 'skybox_randomizer'
 MOD_DATA_VERSION = 1
 
-# Translations are loaded from:
-# ./mods/configs/sbr_Packs/res/text/<lang>.json
-# Falls back to 'en' if the current language file is missing.
-
 class SkyboxRandomizer:
     def __init__(self):
         try:
@@ -50,43 +46,32 @@ class SkyboxRandomizer:
             print('[SBRandomizer] ERROR during initialization: {}'.format(e))
             import traceback
             traceback.print_exc()
-            
+
     def _detect_language(self):
         try:
             from helpers import getClientLanguage
-            lang = getClientLanguage()
-            print('[SBRandomizer] Detected language: {}'.format(lang))
-            return lang
+            return getClientLanguage()
         except ImportError:
             pass
-
         try:
             from account_helpers import getClientLanguage
-            lang = getClientLanguage()
-            print('[SBRandomizer] Detected language: {}'.format(lang))
-            return lang
+            return getClientLanguage()
         except ImportError:
             pass
-
         try:
             from gui.shared.utils import getClientLanguage
-            lang = getClientLanguage()
-            print('[SBRandomizer] Detected language: {}'.format(lang))
-            return lang
+            return getClientLanguage()
         except ImportError:
             pass
-
         print('[SBRandomizer] Could not import getClientLanguage from any known module')
         return None
 
     def _load_translations(self):
         lang = self._detect_language() or 'en'
-
         loaded = self._try_load_lang(lang)
         if not loaded and lang != 'en':
             print('[SBRandomizer] No translation for "{}", falling back to en'.format(lang))
             loaded = self._try_load_lang('en')
-
         if loaded:
             self._strings = loaded
             print('[SBRandomizer] Translations loaded: {} ({} keys)'.format(lang, len(loaded)))
@@ -95,7 +80,6 @@ class SkyboxRandomizer:
             self._strings = self._hardcoded_fallback()
 
     def _try_load_lang(self, lang):
-        """Try to load a specific language file. Returns dict or None."""
         path = os.path.join(self.lang_path, '{}.json'.format(lang))
         if not os.path.exists(path):
             return None
@@ -107,7 +91,6 @@ class SkyboxRandomizer:
             return None
 
     def _t(self, key, **kwargs):
-        """Get a translated string by key, with optional .format()-style kwargs."""
         s = self._strings.get(key, key)
         if kwargs:
             try:
@@ -125,7 +108,16 @@ class SkyboxRandomizer:
             'pack_enable_header': 'Enable/Disable Pack',
             'pack_enable_body': 'Toggle whether "{name}" can be randomly selected',
             'weight_label': 'Weight',
+            # --- active hours ---
+            'hour_from_label': 'Active From (hour)',
+            'hour_from_tooltip': '{HEADER}Active From{/HEADER}{BODY}Start of the hour range (0-23) during which "{name}" can be selected. Supports overnight ranges (e.g. 22 to 6).{/BODY}',
+            'hour_to_label': 'Active To (hour)',
+            'hour_to_tooltip': '{HEADER}Active To{/HEADER}{BODY}End of the hour range (0-23) during which "{name}" can be selected. Supports overnight ranges (e.g. 22 to 6).{/BODY}',
         }
+
+    # ------------------------------------------------------------------ #
+    #  Game version / paths
+    # ------------------------------------------------------------------ #
 
     def _get_game_version(self):
         try:
@@ -134,7 +126,6 @@ class SkyboxRandomizer:
                 return game.GameParams.version
         except:
             pass
-
         try:
             mods_path = './mods/'
             if os.path.exists(mods_path):
@@ -148,25 +139,29 @@ class SkyboxRandomizer:
                     return sorted(version_dirs, reverse=True)[0]
         except:
             pass
-
         return None
+
+    # ------------------------------------------------------------------ #
+    #  Pack scanning
+    # ------------------------------------------------------------------ #
 
     def _scan_available_packs(self):
         try:
             if not os.path.exists(self.sky_packs_path):
                 return
-
             self.available_packs = ['Default']
-
             packs = sorted(
                 os.path.splitext(item)[0]
                 for item in os.listdir(self.sky_packs_path)
                 if item.endswith('.wotmod')
             )
             self.available_packs.extend(packs)
-
         except Exception as e:
             print('[SBRandomizer] Error scanning packs: {}'.format(e))
+
+    # ------------------------------------------------------------------ #
+    #  Settings UI template
+    # ------------------------------------------------------------------ #
 
     def _build_settings_template(self):
         try:
@@ -194,6 +189,7 @@ class SkyboxRandomizer:
                 safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
                 default_enabled = pack != 'Default'
 
+                # --- enable checkbox ---
                 checkbox = templates.createCheckbox(
                     pack,
                     'enable_{}'.format(safe_name),
@@ -205,15 +201,37 @@ class SkyboxRandomizer:
                 )
                 column2.append(checkbox)
 
-                slider = templates.createSlider(
+                # --- weight slider ---
+                slider_weight = templates.createSlider(
                     '  {}'.format(self._t('weight_label')),
                     'weight_{}'.format(safe_name),
-                    1.0,
-                    0.1,
-                    5.0,
-                    0.1
+                    1.0, 0.1, 5.0, 0.1
                 )
-                column2.append(slider)
+                column2.append(slider_weight)
+
+                # --- active-hours: from ---
+                slider_from = templates.createSlider(
+                    '  {}'.format(self._t('hour_from_label')),
+                    'hour_from_{}'.format(safe_name),
+                    0.0, 0.0, 23.0, 1.0,
+                    tooltip='{{HEADER}}{header}{{/HEADER}}{{BODY}}{body}{{/BODY}}'.format(
+                        header=self._t('hour_from_label'),
+                        body=self._t('hour_from_tooltip', name=pack)
+                    )
+                )
+                column2.append(slider_from)
+
+                # --- active-hours: to ---
+                slider_to = templates.createSlider(
+                    '  {}'.format(self._t('hour_to_label')),
+                    'hour_to_{}'.format(safe_name),
+                    23.0, 0.0, 23.0, 1.0,
+                    tooltip='{{HEADER}}{header}{{/HEADER}}{{BODY}}{body}{{/BODY}}'.format(
+                        header=self._t('hour_to_label'),
+                        body=self._t('hour_to_tooltip', name=pack)
+                    )
+                )
+                column2.append(slider_to)
 
             return {
                 'modDisplayName': 'Skybox Randomizer',
@@ -238,26 +256,28 @@ class SkyboxRandomizer:
             safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
             settings['enable_{}'.format(safe_name)] = pack != 'Default'
             settings['weight_{}'.format(safe_name)] = 1.0
+            settings['hour_from_{}'.format(safe_name)] = 0.0   # active all day by default
+            settings['hour_to_{}'.format(safe_name)] = 23.0
         return settings
+
+    # ------------------------------------------------------------------ #
+    #  ModSettingsAPI registration
+    # ------------------------------------------------------------------ #
 
     def _register_modsettings(self):
         try:
             if not self.available_packs:
                 return
-
             template = self._build_settings_template()
             if not template:
                 return
-
             savedSettings = g_modsSettingsApi.getModSettings(MOD_LINKAGE, template)
-
             if savedSettings:
                 self.settings = savedSettings
                 g_modsSettingsApi.registerCallback(MOD_LINKAGE, self._on_settings_changed, None)
             else:
                 self.settings = self._build_default_settings()
                 g_modsSettingsApi.setModTemplate(MOD_LINKAGE, template, self._on_settings_changed, None)
-
         except Exception as e:
             print('[SBRandomizer] Error registering ModSettingsAPI: {}'.format(e))
             import traceback
@@ -269,13 +289,45 @@ class SkyboxRandomizer:
                 self.settings = newSettings
             except Exception as e:
                 print('[SBRandomizer] Error in settings callback: {}'.format(e))
-                
+
+    # ------------------------------------------------------------------ #
+    #  Pack selection helpers
+    # ------------------------------------------------------------------ #
+
+    def _get_pack_hour_range(self, pack):
+        """Return (hour_from, hour_to) integers for the given pack."""
+        safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
+        h_from = int(self.settings.get('hour_from_{}'.format(safe_name), 0))
+        h_to   = int(self.settings.get('hour_to_{}'.format(safe_name), 23))
+        return h_from, h_to
+
+    @staticmethod
+    def _is_hour_in_range(current_hour, h_from, h_to):
+        """
+        Returns True when current_hour falls inside [h_from, h_to].
+        Handles overnight ranges automatically (e.g. 22 → 6).
+        """
+        if h_from <= h_to:
+            return h_from <= current_hour <= h_to
+        else:
+            # overnight: active from h_from until midnight AND from midnight until h_to
+            return current_hour >= h_from or current_hour <= h_to
+
     def _get_enabled_packs(self):
+        import datetime
+        current_hour = datetime.datetime.now().hour
+
         enabled = []
         for pack in self.available_packs:
             safe_name = pack.replace(' ', '_').replace('-', '_').replace('.', '_')
-            if self.settings.get('enable_{}'.format(safe_name), True):
-                enabled.append(pack)
+            if not self.settings.get('enable_{}'.format(safe_name), True):
+                continue
+            h_from, h_to = self._get_pack_hour_range(pack)
+            if not self._is_hour_in_range(current_hour, h_from, h_to):
+                print('[SBRandomizer] Pack "{}" skipped (outside active hours {}–{}, current {})'.format(
+                    pack, h_from, h_to, current_hour))
+                continue
+            enabled.append(pack)
         return enabled
 
     def _get_pack_weight(self, pack):
@@ -294,26 +346,25 @@ class SkyboxRandomizer:
     def _select_weighted_pack(self, pack_list=None):
         if pack_list is None:
             pack_list = self._get_enabled_packs()
-
         if not pack_list:
             return None
-
         weights = [max(0.1, self._get_pack_weight(p)) for p in pack_list]
         total_weight = sum(weights)
-
         rand_val = random.uniform(0, total_weight)
         cumulative = 0
         for pack, weight in zip(pack_list, weights):
             cumulative += weight
             if rand_val <= cumulative:
                 return pack
-
         return pack_list[-1]
+
+    # ------------------------------------------------------------------ #
+    #  Initialization
+    # ------------------------------------------------------------------ #
 
     def _complete_initialization(self):
         if self.initialized:
             return
-
         try:
             version = self._get_game_version()
             if not version:
@@ -348,6 +399,10 @@ class SkyboxRandomizer:
             import traceback
             traceback.print_exc()
 
+    # ------------------------------------------------------------------ #
+    #  Pack install / uninstall
+    # ------------------------------------------------------------------ #
+
     def _get_wotmod_path(self, pack_name):
         return os.path.join(self.sky_packs_path, '{}.wotmod'.format(pack_name))
 
@@ -368,25 +423,19 @@ class SkyboxRandomizer:
 
             with zipfile.ZipFile(wotmod_path, 'r') as z:
                 res_prefix = 'res/'
-
                 for zip_path in z.namelist():
                     if not zip_path.startswith(res_prefix):
                         continue
-
                     rel_path = zip_path[len(res_prefix):]
                     if not rel_path or rel_path.endswith('/'):
                         continue
-
                     dest_path = os.path.join(self.res_mods_path, rel_path)
                     dest_dir = os.path.dirname(dest_path)
-
                     if not os.path.exists(dest_dir):
                         os.makedirs(dest_dir)
-
                     top_level = rel_path.split('/')[0]
                     if top_level not in self.tracked_files:
                         self.tracked_files.append(top_level)
-
                     with z.open(zip_path) as src, open(dest_path, 'wb') as dst:
                         shutil.copyfileobj(src, dst)
 
@@ -404,7 +453,6 @@ class SkyboxRandomizer:
         try:
             if not os.path.exists(self.res_mods_path):
                 return
-
             for item in self.tracked_files:
                 item_path = os.path.join(self.res_mods_path, item)
                 if not os.path.exists(item_path):
@@ -416,13 +464,15 @@ class SkyboxRandomizer:
                         os.remove(item_path)
                 except Exception as e:
                     print('[SBRandomizer] Could not remove {}: {}'.format(item, e))
-
             self.installed_pack = None
             self.tracked_files = []
             self._save_manifest()
-
         except Exception as e:
             print('[SBRandomizer] ERROR cleaning res_mods: {}'.format(e))
+
+    # ------------------------------------------------------------------ #
+    #  Manifest
+    # ------------------------------------------------------------------ #
 
     def _save_manifest(self):
         try:
@@ -455,10 +505,8 @@ class SkyboxRandomizer:
             manifest = self._load_manifest()
             if not manifest or not manifest.get('tracked_files'):
                 return
-
             if not os.path.exists(self.res_mods_path):
                 return
-
             for item in manifest['tracked_files']:
                 item_path = os.path.join(self.res_mods_path, item)
                 if not os.path.exists(item_path):
@@ -470,9 +518,12 @@ class SkyboxRandomizer:
                         os.remove(item_path)
                 except Exception as e:
                     print('[SBRandomizer] Could not remove {}: {}'.format(item, e))
-
         except Exception as e:
             print('[SBRandomizer] ERROR during manifest cleanup: {}'.format(e))
+
+    # ------------------------------------------------------------------ #
+    #  Events
+    # ------------------------------------------------------------------ #
 
     def _register_events(self):
         try:
@@ -523,11 +574,9 @@ class SkyboxRandomizer:
 
     def _on_battle_started(self):
         self.in_battle = True
-
         if self.waiting_for_hangar_gui:
             self.waiting_for_hangar_gui = False
             self.pack_to_install = None
-
         if self.pending_swap_callback is not None:
             try:
                 BigWorld.cancelCallback(self.pending_swap_callback)
@@ -537,10 +586,8 @@ class SkyboxRandomizer:
 
     def _on_battle_ended(self):
         self.in_battle = False
-
         if not self.initialized:
             return
-
         try:
             if self._is_selection_locked():
                 self.current_pack = self._get_manual_pack()

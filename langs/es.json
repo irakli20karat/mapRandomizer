@@ -1,9 +1,13 @@
 {
-  "manual_pack_label": "Selección manual de paquete",
-  "manual_pack_tooltip": "{HEADER}Selección manual de paquete{/HEADER}{BODY}Elige un paquete específico para usar cuando esté bloqueado{/BODY}",
-  "lock_label": "Bloquear selección (desactivar aleatoriedad)",
-  "lock_tooltip": "{HEADER}Bloquear selección{/HEADER}{BODY}Cuando está activado, siempre se usa el paquete seleccionado manualmente en lugar de uno aleatorio{/BODY}",
-  "pack_enable_header": "Activar/desactivar paquete",
-  "pack_enable_body": "Activar o desactivar la selección aleatoria del paquete \"{name}\"",
-  "weight_label": "Peso"
+    "manual_pack_label": "Selección manual de paquete",
+    "manual_pack_tooltip": "{HEADER}Selección manual de paquete{/HEADER}{BODY}Elige un paquete específico para usar cuando esté bloqueado{/BODY}",
+    "lock_label": "Bloquear selección (desactivar aleatoriedad)",
+    "lock_tooltip": "{HEADER}Bloquear selección{/HEADER}{BODY}Cuando está activado, siempre se usa el paquete seleccionado manualmente en lugar de uno aleatorio{/BODY}",
+    "pack_enable_header": "Activar/desactivar paquete",
+    "pack_enable_body": "Activar o desactivar la selección aleatoria del paquete \"{name}\"",
+    "weight_label": "Peso",
+    "hour_from_label": "Activo desde (hora)",
+    "hour_from_tooltip": "{HEADER}Activo desde{/HEADER}{BODY}Hora de inicio (0–23) en que \"{name}\" puede seleccionarse.{/BODY}",
+    "hour_to_label": "Activo hasta (hora)",
+    "hour_to_tooltip": "{HEADER}Activo hasta{/HEADER}{BODY}Hora de fin (0–23) en que \"{name}\" deja de poder seleccionarse.{/BODY}"
 }
