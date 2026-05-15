@@ -7,7 +7,7 @@
     "pack_enable_body": "Activar o desactivar la selección aleatoria del paquete \"{name}\"",
     "weight_label": "Peso",
     "hour_from_label": "Activo desde (hora)",
-    "hour_from_tooltip": "{HEADER}Activo desde{/HEADER}{BODY}Hora de inicio (0–23) en que \"{name}\" puede seleccionarse.{/BODY}",
+    "hour_from_tooltip": "Hora de inicio (0–23) en que \"{name}\" puede seleccionarse.",
     "hour_to_label": "Activo hasta (hora)",
-    "hour_to_tooltip": "{HEADER}Activo hasta{/HEADER}{BODY}Hora de fin (0–23) en que \"{name}\" deja de poder seleccionarse.{/BODY}"
+    "hour_to_tooltip": "Hora de fin (0–23) en que \"{name}\" deja de poder seleccionarse."
 }

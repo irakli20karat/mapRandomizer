@@ -108,11 +108,10 @@ class SkyboxRandomizer:
             'pack_enable_header': 'Enable/Disable Pack',
             'pack_enable_body': 'Toggle whether "{name}" can be randomly selected',
             'weight_label': 'Weight',
-            # --- active hours ---
             'hour_from_label': 'Active From (hour)',
-            'hour_from_tooltip': '{HEADER}Active From{/HEADER}{BODY}Start of the hour range (0-23) during which "{name}" can be selected. Supports overnight ranges (e.g. 22 to 6).{/BODY}',
+            'hour_from_tooltip': 'Start of the hour range (0–23) during which "{name}" can be selected.',
             'hour_to_label': 'Active To (hour)',
-            'hour_to_tooltip': '{HEADER}Active To{/HEADER}{BODY}End of the hour range (0-23) during which "{name}" can be selected. Supports overnight ranges (e.g. 22 to 6).{/BODY}',
+            'hour_to_tooltip': 'End of the hour range (0–23) during which "{name}" can be selected.',
         }
 
     # ------------------------------------------------------------------ #

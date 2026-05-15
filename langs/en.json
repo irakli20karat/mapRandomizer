@@ -7,7 +7,7 @@
     "pack_enable_body": "Toggle whether \"{name}\" can be randomly selected",
     "weight_label": "Weight",
     "hour_from_label": "Active From (hour)",
-    "hour_from_tooltip": "{HEADER}Active From{/HEADER}{BODY}Start hour (0–23) when \"{name}\" becomes eligible.{/BODY}",
+    "hour_from_tooltip": "Start of the hour range (0–23) during which '{name}' can be selected.",
     "hour_to_label": "Active To (hour)",
-    "hour_to_tooltip": "{HEADER}Active To{/HEADER}{BODY}End hour (0–23) when \"{name}\" stops being eligible.{/BODY}"
+    "hour_to_tooltip": "End of the hour range (0–23) during which '{name}' can be selected."
 }
